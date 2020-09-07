@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+use super::ast::Visitor;
+use super::extern_impls::*;
+use super::interpreter::Interpreter;
 use crate::ast::{Info, Prim::*};
 use crate::database::Compiler;
 use crate::errors::TError;
-use super::extern_impls::*;
-use super::interpreter::Interpreter;
-use super::ast::Visitor;
 use crate::types::{
     bit_type, i32_type, number_type, string_type, type_type, unit_type, variable, void_type, Type,
     Type::*,
@@ -59,7 +59,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
                 // TODO require 1 arg
                 Some(I32(n, _)) => return Ok(I32(n, info)),
                 Some(i) => return Err(TError::TypeMismatch("+".to_string(), Box::new(i), info)),
-                _ => {},
+                _ => {}
             };
             let left = interp.eval_local(db, "+", "left")?;
             let right = interp.eval_local(db, "+", "right")?;
@@ -246,12 +246,28 @@ pub enum Direction {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Semantic {
-    Operator { binding: i32, assoc: Direction},
+    Operator {
+        binding: i32,
+        assoc: Direction,
+        laziness: Option<Direction>,
+    },
     Func,
 }
 
 fn operator(binding: i32, assoc: Direction) -> Semantic {
-    Semantic::Operator { binding, assoc }
+    Semantic::Operator {
+        binding,
+        assoc,
+        laziness: None,
+    }
+}
+
+fn lazy_operator(binding: i32, assoc: Direction, laziness: Direction) -> Semantic {
+    Semantic::Operator {
+        binding,
+        assoc,
+        laziness: Some(laziness),
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -566,7 +582,7 @@ string to_string(const bool& t){
         },
         Extern {
             name: "||".to_string(),
-            semantic: operator(60, Left),
+            semantic: lazy_operator(60, Left, Right),
             ty: Function {
                 intros: dict!(),
                 results: dict!("it" => bit_type()),
@@ -577,7 +593,7 @@ string to_string(const bool& t){
         },
         Extern {
             name: "&&".to_string(),
-            semantic: operator(60, Left),
+            semantic: lazy_operator(60, Left, Right),
             ty: Function {
                 intros: dict!(),
                 results: dict!("it" => bit_type()),

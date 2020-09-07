@@ -182,19 +182,19 @@ impl CodeGenerator {
     fn build_call(&mut self, before: &str, mid: &str, args: Vec<Code>) -> Code {
         match args.len() {
             0 => Code::Expr(format!("{}()", before)),
-            1 => args[0].clone().with_expr(&|exp| Code::Expr(format!("{}({})", before, exp))),
+            1 => args[0]
+                .clone()
+                .with_expr(&|exp| Code::Expr(format!("{}({})", before, exp))),
             _ => {
                 let mut content: Code = args[0].clone().with_expr(&|exp| Code::Expr(exp));
                 for arg in args[1..].iter() {
                     content = content.with_expr(&|content| {
                         arg.clone().with_expr(&|arg_expr| {
-                                Code::Expr(format!("{}{}{}", content, mid, arg_expr))
+                            Code::Expr(format!("{}{}{}", content, mid, arg_expr))
                         })
                     });
                 }
-                content.with_expr(&|content| {
-                    Code::Expr(format!("{}({})", before, content))
-                })
+                content.with_expr(&|content| Code::Expr(format!("{}({})", before, content)))
             }
         }
     }
@@ -285,6 +285,7 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
     }
 
     fn visit_prim(&mut self, db: &dyn Compiler, state: &mut State, expr: &Prim) -> Res {
+        eprintln!("To Cpp prim: {}", expr.clone().to_node());
         use Prim::*;
         match expr {
             I32(n, _) => Ok(Code::Expr(n.to_string())),
@@ -310,7 +311,10 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
                         panic!("TODO");
                     }
                     let (left, right) = (expr.args[0].clone(), expr.args[1].clone());
-                    let (left, right) = (self.visit_let(db, state, &left.clone())?, self.visit_let(db, state, &right.clone())?);
+                    let (left, right) = (
+                        self.visit_let(db, state, &left.clone())?,
+                        self.visit_let(db, state, &right.clone())?,
+                    );
                     let done = Code::If {
                         condition: Box::new(left),
                         then: Box::new(right),
@@ -323,7 +327,10 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
                         panic!("TODO");
                     }
                     let (left, right) = (expr.args[0].clone(), expr.args[1].clone());
-                    let (left, right) = (self.visit_let(db, state, &left.clone())?, self.visit_let(db, state, &right.clone())?);
+                    let (left, right) = (
+                        self.visit_let(db, state, &left.clone())?,
+                        self.visit_let(db, state, &right.clone())?,
+                    );
                     // TODO: handle 'error' values more widly.
                     // TODO: ORDERING
                     return Ok(left.merge(right));
@@ -346,7 +353,7 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
                 return Ok(self.build_call(
                     info.cpp.code.as_str(),
                     info.cpp.arg_joiner.as_str(),
-                    arg_exprs
+                    arg_exprs,
                 ));
             }
         }
@@ -381,6 +388,7 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
     }
 
     fn visit_let(&mut self, db: &dyn Compiler, state: &mut State, expr: &Let) -> Res {
+        eprintln!("To Cpp let: {}", expr.clone().to_node());
         let filename = expr
             .get_info()
             .loc
@@ -396,6 +404,7 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
             .find_symbol_uses(context.clone(), path.clone())?
             .unwrap_or_else(|| panic!("couldn't find {:?} {:?}", context.clone(), path.clone()));
         if uses.is_empty() {
+            eprintln!("culling let: {:?}", expr.get_info().defined_at);
             return Ok(Code::Empty);
         }
         let name = make_name(

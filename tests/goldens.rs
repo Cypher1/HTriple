@@ -50,8 +50,8 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
         },
         (Ok(result), Output(s)) => {
             assert_eq!(
-                s,
-                format!("{}{}", stdout.join(""), result)
+                format!("{}{}", stdout.join(""), result),
+                s
             );
             eprintln!("Success. Result:\n{:?}", result);
         },
@@ -60,8 +60,8 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
             let read = read_to_string(&gold);
             let golden = read.unwrap_or_else(|_| panic!("golden file {} could not be read", gold)).replace("\r", "");
             assert_eq!(
-                golden,
-                format!("{}{}", stdout.join(""), result)
+                format!("{}{}", stdout.join(""), result),
+                golden
             );
             eprintln!("Success. Result:\n{:?}", result);
         },
@@ -79,7 +79,7 @@ fn compile_with_success(file: &str) {
 }
 
 fn interpret_with_success(file: &str) {
-    test_with_expectation(Success, vec!["--run", file]);
+    test_with_expectation(Success, vec!["--run", "-d", "-d", file]);
 }
 
 fn interpret_with_error(file: &str) {

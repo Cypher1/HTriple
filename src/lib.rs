@@ -11,10 +11,10 @@ pub mod ast;
 pub mod cli_options;
 pub mod database;
 pub mod errors;
+pub mod extern_impls;
 pub mod interpreter;
 pub mod parser;
 pub mod type_checker;
-pub mod extern_impls;
 
 mod externs;
 mod location;

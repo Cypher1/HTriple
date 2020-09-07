@@ -8,21 +8,28 @@ use super::externs::{Direction, Semantic};
 use super::location::*;
 use super::tokens::*;
 
-fn binding(db: &dyn Compiler, tok: &Token) -> Result<Semantic, TError> {
-    db.get_extern_operator(tok.value.to_owned())
+fn binding(db: &dyn Compiler, tok: &str) -> Result<Semantic, TError> {
+    db.get_extern_operator(tok.to_owned())
 }
 
-fn binding_dir(db: &dyn Compiler, tok: &Token) -> Result<Direction, TError> {
+fn binding_dir(db: &dyn Compiler, tok: &str) -> Result<Direction, TError> {
     Ok(match binding(db, tok)? {
         Semantic::Operator { assoc, .. } => assoc,
         Semantic::Func => Direction::Left,
     })
 }
 
-fn binding_power(db: &dyn Compiler, tok: &Token) -> Result<i32, TError> {
+fn binding_power(db: &dyn Compiler, tok: &str) -> Result<i32, TError> {
     Ok(match binding(db, tok)? {
         Semantic::Operator { binding, .. } => binding,
         Semantic::Func => 1000,
+    })
+}
+
+fn binding_laziness(db: &dyn Compiler, tok: &str) -> Result<Option<Direction>, TError> {
+    Ok(match binding(db, tok)? {
+        Semantic::Operator { laziness, .. } => laziness,
+        Semantic::Func => None,
     })
 }
 
@@ -39,29 +46,32 @@ fn get_defs(root: Node) -> Vec<Let> {
             info: n.get_info(),
             value: Box::new(n.to_node()),
         }),
-        ApplyNode(Apply {
-            inner,
-            args,
-            info,
-        }) => {
-            if SymNode(Sym{name: ",".to_string(), info: Info::default()}) == *inner {
+        ApplyNode(Apply { inner, args, info }) => {
+            if SymNode(Sym {
+                name: ",".to_string(),
+                info: Info::default(),
+            }) == *inner
+            {
                 for arg in args {
-                    match *arg.value {
-                        PrimNode(Prim::Lambda(n)) => all_args.append(&mut get_defs(*n)),
-                        node => panic!("Unexpected node {}", node),
-                    }
+                    all_args.append(&mut get_defs(arg.to_node()));
                 }
             } else {
                 all_args.push(Let {
                     name: "it".to_string(),
                     args: None,
                     value: Box::new(
-                        Apply{inner, args, info: info.clone()}.to_node()
-                        .clone()),
+                        Apply {
+                            inner,
+                            args,
+                            info: info.clone(),
+                        }
+                        .to_node()
+                        .clone(),
+                    ),
                     info,
                 });
             }
-        },
+        }
         n => all_args.push(Let {
             name: "it".to_string(),
             args: None,
@@ -99,16 +109,9 @@ fn nud(db: &dyn Compiler, mut toks: VecDeque<Token>) -> Result<(Node, VecDeque<T
                 toks,
             )),
             TokenType::Op => {
-                let lbp = binding_power(db, &head)?;
+                let lbp = binding_power(db, &head.value)?;
                 let (right, new_toks) = expr(db, toks, lbp)?;
-                Ok((
-                    un_op(
-                        head.value.as_str(),
-                        right,
-                        head.get_info(),
-                    ),
-                    new_toks,
-                ))
+                Ok((un_op(head.value.as_str(), right, head.get_info()), new_toks))
             }
             TokenType::CloseBracket => {
                 panic!("Unexpected close bracket {}", head.value);
@@ -221,8 +224,8 @@ fn led(
                 Ok((left, toks))
             }
             TokenType::Op => {
-                let lbp = binding_power(db, &head)?;
-                let assoc = binding_dir(db, &head)?;
+                let lbp = binding_power(db, &head.value)?;
+                let assoc = binding_dir(db, &head.value)?;
                 let (right, new_toks) = expr(
                     db,
                     toks,
@@ -233,13 +236,7 @@ fn led(
                 )?;
                 if head.value != "=" {
                     return Ok((
-                        BinOp {
-                            info: head.get_info(),
-                            name: head.value,
-                            left: Box::new(left),
-                            right: Box::new(right),
-                        }
-                        .to_node(),
+                        bin_op(head.value.as_str(), left, right, head.get_info(), None),
                         new_toks,
                     ));
                 }
@@ -248,6 +245,7 @@ fn led(
                         Let {
                             name: s.name,
                             args: None,
+
                             value: Box::new(right),
                             info: head.get_info(),
                         }
@@ -258,38 +256,17 @@ fn led(
                         Node::SymNode(s) => Ok((
                             Let {
                                 name: s.name,
-                                args: None,
+                                args: Some(a.args.iter().map(|l| l.to_sym()).collect()),
                                 value: Box::new(right),
                                 info: head.get_info(),
                             }
                             .to_node(),
                             new_toks,
                         )),
-                        Node::ApplyNode(a) => match *a.inner {
-                            Node::SymNode(s) => Ok((
-                                Let {
-                                    name: s.name,
-                                    args: Some(a.args.iter().map(|l| l.to_sym()).collect()),
-                                    value: Box::new(right),
-                                    info: head.get_info(),
-                                }
-                                .to_node(),
-                                new_toks,
-                            )),
-                            _ => panic!(format!("Cannot assign to {}", a.to_node())),
-                        },
-                        _ => panic!(format!("Cannot assign to {}", left)),
-                    };
+                        s => panic!(format!("Cannot assign to {}", s)),
+                    },
+                    _ => panic!(format!("Cannot assign to {}", left)),
                 }
-                Ok((
-                    bin_op(
-                        head.value.as_str(),
-                        left,
-                        right,
-                        head.get_info(),
-                    ),
-                    new_toks,
-                ))
             }
             TokenType::CloseBracket => panic!("Unexpected close bracket"),
             TokenType::OpenBracket => {
@@ -368,7 +345,7 @@ fn expr(
         match toks.front() {
             None => break,
             Some(token) => {
-                if init_lbp >= binding_power(db, token)? {
+                if init_lbp >= binding_power(db, &token.value)? {
                     break;
                 }
             }
@@ -446,7 +423,19 @@ pub fn parse(db: &dyn Compiler, module: &Path) -> Result<Node, TError> {
     Ok(root)
 }
 
-fn bin_op(name: &str, left: Node, right: Node, info: Info) -> Node {
+fn bin_op(name: &str, left: Node, right: Node, info: Info, lazy: Option<Direction>) -> Node {
+    let left = if lazy == Some(Direction::Left) {
+        Prim::Lambda(Box::new(left)).to_node()
+    } else {
+        left
+    };
+
+    let right = if lazy == Some(Direction::Right) {
+        Prim::Lambda(Box::new(right)).to_node()
+    } else {
+        right
+    };
+
     Apply {
         inner: Box::new(
             Sym {
@@ -458,13 +447,13 @@ fn bin_op(name: &str, left: Node, right: Node, info: Info) -> Node {
         args: vec![
             Let {
                 name: "left".to_string(),
-                value: Box::new(Prim::Lambda(Box::new(left)).to_node()),
+                value: Box::new(left),
                 args: None,
                 info: info.clone(),
             },
             Let {
                 name: "right".to_string(),
-                value: Box::new(Prim::Lambda(Box::new(right)).to_node()),
+                value: Box::new(right),
                 args: None,
                 info: info.clone(),
             },
@@ -496,7 +485,7 @@ fn un_op(name: &str, inner: Node, info: Info) -> Node {
 
 #[cfg(test)]
 pub mod tests {
-    use super::{parse_string, bin_op, un_op};
+    use super::{bin_op, parse_string, un_op};
     use crate::ast::*;
     use crate::database::Compiler;
     use crate::database::DB;
@@ -545,7 +534,7 @@ pub mod tests {
     fn parse_min_op() {
         assert_eq!(
             parse("14-12"),
-            bin_op("-", num_lit(14), num_lit(12), Info::default())
+            bin_op("-", num_lit(14), num_lit(12), Info::default(), None)
         );
     }
 
@@ -553,7 +542,7 @@ pub mod tests {
     fn parse_mul_op() {
         assert_eq!(
             parse("14*12"),
-            bin_op("*", num_lit(14), num_lit(12), Info::default())
+            bin_op("*", num_lit(14), num_lit(12), Info::default(), None)
         );
     }
 
@@ -564,8 +553,9 @@ pub mod tests {
             bin_op(
                 "+",
                 num_lit(3),
-                bin_op("*", num_lit(2), num_lit(4), Info::default()),
-                Info::default()
+                bin_op("*", num_lit(2), num_lit(4), Info::default(), None),
+                Info::default(),
+                None
             )
         );
     }
@@ -576,9 +566,10 @@ pub mod tests {
             parse("3*2+4"),
             bin_op(
                 "+",
-                bin_op("*", num_lit(3), num_lit(2), Info::default()),
+                bin_op("*", num_lit(3), num_lit(2), Info::default(), None),
                 num_lit(4),
-                Info::default()
+                Info::default(),
+                None
             )
         );
     }
@@ -590,8 +581,9 @@ pub mod tests {
             bin_op(
                 "*",
                 num_lit(3),
-                bin_op("+", num_lit(2), num_lit(4), Info::default()),
-                Info::default()
+                bin_op("+", num_lit(2), num_lit(4), Info::default(), None),
+                Info::default(),
+                None
             )
         );
     }
@@ -600,7 +592,13 @@ pub mod tests {
     fn parse_add_str() {
         assert_eq!(
             parse("\"hello\"+\" world\""),
-            bin_op("+", str_lit("hello"), str_lit(" world"), Info::default())
+            bin_op(
+                "+",
+                str_lit("hello"),
+                str_lit(" world"),
+                Info::default(),
+                None
+            )
         );
     }
 
@@ -612,7 +610,8 @@ pub mod tests {
                 ";",
                 str_lit("hello world"),
                 num_lit(7),
-                Info::default()
+                Info::default(),
+                None
             )
         );
     }
@@ -631,7 +630,8 @@ pub mod tests {
                 }
                 .to_node(),
                 num_lit(7),
-                Info::default()
+                Info::default(),
+                None
             )
         );
     }

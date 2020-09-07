@@ -299,7 +299,6 @@ pub trait Visitor<State, Res, Final, Start = Root> {
     fn visit_let(&mut self, db: &dyn Compiler, state: &mut State, e: &Let) -> Result<Res, TError>;
 
     fn visit(&mut self, db: &dyn Compiler, state: &mut State, e: &Node) -> Result<Res, TError> {
-        // eprintln!("{:?}", e);
         use Node::*;
         match e {
             Error(n) => self.handle_error(db, state, n),

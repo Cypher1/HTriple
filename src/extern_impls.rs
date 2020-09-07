@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use super::ast::*;
 use super::errors::TError;
+use std::collections::HashMap;
 
 pub type Res = Result<Prim, TError>;
 pub type Frame = HashMap<String, Prim>;
@@ -205,4 +205,3 @@ pub fn prim_pow(l: Prim, r: Prim, info: Info) -> Res {
         )),
     }
 }
-

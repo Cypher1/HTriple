@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use super::ast::*;
 use super::database::Compiler;
 use super::errors::TError;
-use super::extern_impls::{Res, State, Frame};
+use super::extern_impls::{Frame, Res, State};
+use std::collections::HashMap;
 
 //Vec<&dyn Fn() -> Res>
 pub type ImplFn<'a> = &'a mut dyn FnMut(&mut Interpreter, &dyn Compiler, Info) -> Res;
@@ -32,9 +32,13 @@ fn find_symbol<'a>(state: &'a [Frame], name: &str) -> Option<&'a Prim> {
     None
 }
 
-
 impl<'a> Interpreter<'a> {
-    pub fn eval_local_maybe(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Result<Option<Prim>, TError> {
+    pub fn eval_local_maybe(
+        &mut self,
+        db: &dyn Compiler,
+        function_name: &str,
+        name: &str,
+    ) -> Result<Option<Prim>, TError> {
         if let Some(frame) = self.state.last() {
             return Ok(match frame.get(name).cloned() {
                 None => None,
@@ -45,14 +49,23 @@ impl<'a> Interpreter<'a> {
         panic!("no frame for function {}", function_name)
     }
 
-    pub fn eval_local(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Result<Prim, TError> {
+    pub fn eval_local(
+        &mut self,
+        db: &dyn Compiler,
+        function_name: &str,
+        name: &str,
+    ) -> Result<Prim, TError> {
         if let Some(local) = self.eval_local_maybe(db, function_name, name)? {
             return Ok(local);
         }
         panic!("{} needs argument named {}", function_name, name)
     }
 
-    pub fn get_local_maybe(&mut self, function_name: &str, name: &str) -> Result<Option<Prim>, TError> {
+    pub fn get_local_maybe(
+        &mut self,
+        function_name: &str,
+        name: &str,
+    ) -> Result<Option<Prim>, TError> {
         if let Some(frame) = self.state.last() {
             return Ok(frame.get(name).cloned());
         }
@@ -66,7 +79,6 @@ impl<'a> Interpreter<'a> {
         panic!("{} needs argument named {}", function_name, name)
     }
 }
-
 
 // TODO: Return nodes.
 impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
@@ -87,13 +99,13 @@ impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
             return Ok(match value.clone() {
                 Prim::Lambda(lam) => self.visit(db, &mut (), &lam)?,
                 val => val,
-            })
+            });
         }
         if db.debug() > 2 {
             eprintln!("checking for interpreter impl {}", expr.name.clone());
         }
         // if let Some(extern_impl) = &mut self.impls.get_mut(name) {
-            // return extern_impl(db, expr.get_info());
+        // return extern_impl(db, expr.get_info());
         // }
         if db.debug() > 2 {
             eprintln!("checking for default impl {}", expr.name.clone());

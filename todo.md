@@ -1,5 +1,7 @@
 # TODOs
 
+- Audit panics and propagate as errors where needed
+
 ## Features
 
 - Imports

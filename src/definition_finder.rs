@@ -68,8 +68,13 @@ impl Visitor<State, Node, Root, Path> for DefinitionFinder {
         }
     }
 
-    fn visit_prim(&mut self, _db: &dyn Compiler, _state: &mut State, expr: &Prim) -> Res {
-        Ok(expr.clone().to_node())
+    fn visit_prim(&mut self, db: &dyn Compiler, state: &mut State, expr: &Prim) -> Res {
+        match expr {
+            Prim::Lambda(node) => {
+                Ok(Prim::Lambda(Box::new(self.visit(db, state, node)?)).to_node())
+            }
+            _ => Ok(expr.clone().to_node()),
+        }
     }
 
     fn visit_apply(&mut self, db: &dyn Compiler, state: &mut State, expr: &Apply) -> Res {
