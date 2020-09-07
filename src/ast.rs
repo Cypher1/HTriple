@@ -295,9 +295,8 @@ impl Default for Entry {
     fn default() -> Entry {
         Entry {
             uses: HashSet::new(),
-            defined_at: vec![], //TODO: Remove the default instance.
-                                // requires: vec![],
-                                // defines: HashMap::new(),
+            defined_at: vec![],
+            //TODO: Remove the default instance.
         }
     }
 }

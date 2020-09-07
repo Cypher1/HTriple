@@ -28,50 +28,44 @@ fn binding_power(db: &dyn Compiler, tok: &Token) -> Result<i32, TError> {
 
 fn get_defs(root: Node) -> Vec<Let> {
     use Node::*;
-    let mut args = vec![];
+    let mut all_args = vec![];
 
     match root {
-        LetNode(n) => args.push(n),
-        SymNode(n) => args.push(Let {
+        LetNode(n) => all_args.push(n),
+        SymNode(n) => all_args.push(Let {
             name: n.name.clone(),
             args: None,
             info: n.get_info(),
             value: Box::new(n.to_node()),
         }),
-        BinOpNode(BinOp {
-            name,
-            left,
-            right,
+        ApplyNode(Apply {
+            inner,
+            args,
             info,
         }) => {
-            if name == "," {
-                args.append(&mut get_defs(*left));
-                args.append(&mut get_defs(*right));
+            if SymNode(Sym{name: ",".to_string(), info: Info::default()}) == *inner {
+                for arg in args {
+                    all_args.append(&mut get_defs(arg.to_node()));
+                }
             } else {
-                args.push(Let {
+                all_args.push(Let {
                     name: "it".to_string(),
                     args: None,
                     value: Box::new(
-                        BinOp {
-                            name,
-                            left,
-                            right,
-                            info: info.clone(),
-                        }
-                        .to_node(),
-                    ),
+                        Apply{inner, args, info: info.clone()}.to_node()
+                        .clone()),
                     info,
                 });
             }
-        }
-        n => args.push(Let {
+        },
+        n => all_args.push(Let {
             name: "it".to_string(),
             args: None,
             value: Box::new(n.clone()),
             info: n.get_info(),
         }),
     }
-    args
+    all_args
 }
 
 impl Token {
@@ -104,12 +98,11 @@ fn nud(db: &dyn Compiler, mut toks: VecDeque<Token>) -> Result<(Node, VecDeque<T
                 let lbp = binding_power(db, &head)?;
                 let (right, new_toks) = expr(db, toks, lbp)?;
                 Ok((
-                    UnOp {
-                        name: head.value.clone(),
-                        inner: Box::new(right),
-                        info: head.get_info(),
-                    }
-                    .to_node(),
+                    un_op(
+                        head.value.as_str(),
+                        right,
+                        head.get_info(),
+                    ),
                     new_toks,
                 ))
             }
@@ -236,13 +229,12 @@ fn led(
                 )?;
                 if head.value != "=" {
                     return Ok((
-                        BinOp {
-                            info: head.get_info(),
-                            name: head.value,
-                            left: Box::new(left),
-                            right: Box::new(right),
-                        }
-                        .to_node(),
+                        bin_op(
+                            head.value.as_str(),
+                            left,
+                            right,
+                            head.get_info(),
+                        ),
                         new_toks,
                     ));
                 }
@@ -428,41 +420,89 @@ pub fn parse(db: &dyn Compiler, module: &Path) -> Result<Node, TError> {
     Ok(root)
 }
 
+fn bin_op(name: &str, left: Node, right: Node, info: Info) -> Node {
+    Apply {
+        inner: Box::new(
+            Sym {
+                name: name.to_string(),
+                info: info.clone(),
+            }
+            .to_node(),
+        ),
+        args: vec![
+            Let {
+                name: "left".to_string(),
+                value: Box::new(left),
+                args: None,
+                info: info.clone(),
+            },
+            Let {
+                name: "right".to_string(),
+                value: Box::new(right),
+                args: None,
+                info: info.clone(),
+            },
+        ],
+        info,
+    }
+    .to_node()
+}
+
+fn un_op(name: &str, inner: Node, info: Info) -> Node {
+    Apply {
+        inner: Box::new(
+            Sym {
+                name: name.to_string(),
+                info: info.clone(),
+            }
+            .to_node(),
+        ),
+        args: vec![Let {
+            name: "inner".to_string(),
+            value: Box::new(inner),
+            args: None,
+            info: info.clone(),
+        }],
+        info,
+    }
+    .to_node()
+}
+
 #[cfg(test)]
 pub mod tests {
-    use super::parse_string;
+    use super::{parse_string, bin_op, un_op};
     use crate::ast::*;
     use crate::database::Compiler;
     use crate::database::DB;
     use Prim::*;
 
-    fn parse(contents: String) -> Node {
+    fn parse(contents: &str) -> Node {
         use crate::cli_options::Options;
         use std::sync::Arc;
         let mut db = DB::default();
         let filename = "test.tk";
         db.set_options(Options::default());
         let module = db.module_name(filename.to_owned());
-        parse_string(&db, &module, &Arc::new(contents)).expect("failed to parse string")
+        parse_string(&db, &module, &Arc::new(contents.to_string())).expect("failed to parse string")
     }
 
-    fn num_lit(x: i32) -> Box<Node> {
-        Box::new(I32(x, Info::default()).to_node())
+    fn num_lit(x: i32) -> Node {
+        I32(x, Info::default()).to_node()
     }
 
-    fn str_lit(x: String) -> Box<Node> {
-        Box::new(Str(x, Info::default()).to_node())
+    fn str_lit(x: &str) -> Node {
+        Str(x.to_string(), Info::default()).to_node()
     }
 
     #[test]
     fn parse_num() {
-        assert_eq!(parse("12".to_string()), I32(12, Info::default()).to_node());
+        assert_eq!(parse("12"), I32(12, Info::default()).to_node());
     }
 
     #[test]
     fn parse_str() {
         assert_eq!(
-            parse("\"hello world\"".to_string()),
+            parse("\"hello world\""),
             Str("hello world".to_string(), Info::default()).to_node()
         );
     }
@@ -470,164 +510,103 @@ pub mod tests {
     #[test]
     fn parse_un_op() {
         assert_eq!(
-            parse("-12".to_string()),
-            UnOp {
-                name: "-".to_string(),
-                inner: Box::new(I32(12, Info::default()).to_node()),
-                info: Info::default()
-            }
-            .to_node()
+            parse("-12"),
+            un_op("-", I32(12, Info::default()).to_node(), Info::default()).to_node()
         );
     }
 
     #[test]
     fn parse_min_op() {
         assert_eq!(
-            parse("14-12".to_string()),
-            BinOp {
-                name: "-".to_string(),
-                left: num_lit(14),
-                right: num_lit(12),
-                info: Info::default()
-            }
-            .to_node()
+            parse("14-12"),
+            bin_op("-", num_lit(14), num_lit(12), Info::default())
         );
     }
 
     #[test]
     fn parse_mul_op() {
         assert_eq!(
-            parse("14*12".to_string()),
-            BinOp {
-                name: "*".to_string(),
-                left: num_lit(14),
-                right: num_lit(12),
-                info: Info::default()
-            }
-            .to_node()
+            parse("14*12"),
+            bin_op("*", num_lit(14), num_lit(12), Info::default())
         );
     }
 
     #[test]
     fn parse_add_mul_precedence() {
         assert_eq!(
-            parse("3+2*4".to_string()),
-            BinOp {
-                name: "+".to_string(),
-                left: num_lit(3),
-                right: Box::new(
-                    BinOp {
-                        name: "*".to_string(),
-                        left: num_lit(2),
-                        right: num_lit(4),
-                        info: Info::default()
-                    }
-                    .to_node()
-                ),
-                info: Info::default()
-            }
-            .to_node()
+            parse("3+2*4"),
+            bin_op(
+                "+",
+                num_lit(3),
+                bin_op("*", num_lit(2), num_lit(4), Info::default()),
+                Info::default()
+            )
         );
     }
 
     #[test]
     fn parse_mul_add_precedence() {
         assert_eq!(
-            parse("3*2+4".to_string()),
-            BinOp {
-                name: "+".to_string(),
-                left: Box::new(
-                    BinOp {
-                        name: "*".to_string(),
-                        left: num_lit(3),
-                        right: num_lit(2),
-                        info: Info::default()
-                    }
-                    .to_node()
-                ),
-                right: num_lit(4),
-                info: Info::default()
-            }
-            .to_node()
+            parse("3*2+4"),
+            bin_op(
+                "+",
+                bin_op("*", num_lit(3), num_lit(2), Info::default()),
+                num_lit(4),
+                Info::default()
+            )
         );
     }
 
     #[test]
     fn parse_mul_add_parens() {
         assert_eq!(
-            parse("3*(2+4)".to_string()),
-            BinOp {
-                name: "*".to_string(),
-                left: num_lit(3),
-                right: Box::new(
-                    BinOp {
-                        name: "+".to_string(),
-                        left: num_lit(2),
-                        right: num_lit(4),
-                        info: Info::default()
-                    }
-                    .to_node()
-                ),
-                info: Info::default()
-            }
-            .to_node()
+            parse("3*(2+4)"),
+            bin_op(
+                "*",
+                num_lit(3),
+                bin_op("+", num_lit(2), num_lit(4), Info::default()),
+                Info::default()
+            )
         );
     }
 
     #[test]
     fn parse_add_str() {
         assert_eq!(
-            parse("\"hello\"+\" world\"".to_string()),
-            BinOp {
-                name: "+".to_string(),
-                left: str_lit("hello".to_string()),
-                right: str_lit(" world".to_string()),
-                info: Info::default()
-            }
-            .to_node()
+            parse("\"hello\"+\" world\""),
+            bin_op("+", str_lit("hello"), str_lit(" world"), Info::default())
         );
     }
 
     #[test]
     fn parse_strings_followed_by_raw_values() {
         assert_eq!(
-            parse("\"hello world\"\n7".to_string()),
-            BinOp {
-                name: ";".to_string(),
-                left: Box::new(str_lit("hello world".to_string()).to_node()),
-                right: num_lit(7),
-                info: Info::default()
-            }
-            .to_node()
+            parse("\"hello world\"\n7"),
+            bin_op(
+                ";",
+                str_lit("hello world"),
+                num_lit(7),
+                Info::default()
+            )
         );
     }
 
     #[test]
     fn parse_strings_with_operators_and_trailing_values_in_let() {
         assert_eq!(
-            parse("x()= !\"hello world\"\n7".to_string()),
-            BinOp {
-                name: ";".to_string(),
-                left: Box::new(
-                    Let {
-                        name: "x".to_string(),
-                        args: Some(vec![]),
-                        value: Box::new(
-                            UnOp {
-                                name: "!".to_string(),
-                                inner: str_lit("hello world".to_string()),
-                                info: Info::default(),
-                            }
-                            .to_node()
-                        ),
-                        info: Info::default(),
-                    }
-                    .to_node()
-                ),
-                right: num_lit(7),
-                info: Info::default()
-            }
-            .to_node()
+            parse("x()= !\"hello world\"\n7"),
+            bin_op(
+                ";",
+                Let {
+                    name: "x".to_string(),
+                    args: Some(vec![]),
+                    value: Box::new(un_op("!", str_lit("hello world"), Info::default(),)),
+                    info: Info::default(),
+                }
+                .to_node(),
+                num_lit(7),
+                Info::default()
+            )
         );
     }
 }
