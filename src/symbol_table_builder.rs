@@ -181,28 +181,6 @@ impl Visitor<State, Node, Root, Path> for SymbolTableBuilder {
         .to_node())
     }
 
-    fn visit_un_op(&mut self, db: &dyn Compiler, state: &mut State, expr: &UnOp) -> Res {
-        let inner = Box::new(self.visit(db, state, &expr.inner)?);
-        Ok(UnOp {
-            name: expr.name.clone(),
-            inner,
-            info: expr.get_info(),
-        }
-        .to_node())
-    }
-
-    fn visit_bin_op(&mut self, db: &dyn Compiler, state: &mut State, expr: &BinOp) -> Res {
-        let left = Box::new(self.visit(db, state, &expr.left)?);
-        let right = Box::new(self.visit(db, state, &expr.right)?);
-        Ok(BinOp {
-            name: expr.name.clone(),
-            left,
-            right,
-            info: expr.get_info(),
-        }
-        .to_node())
-    }
-
     fn handle_error(&mut self, _db: &dyn Compiler, _state: &mut State, expr: &Err) -> Res {
         Err(TError::FailedParse(expr.msg.to_string(), expr.get_info()))
     }

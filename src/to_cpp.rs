@@ -179,15 +179,24 @@ type State = Table;
 type Out = (String, HashSet<String>);
 
 impl CodeGenerator {
-    fn build_call1(&mut self, before: &str, inner: Code) -> Code {
-        inner.with_expr(&|exp| Code::Expr(format!("{}({})", before, exp)))
-    }
-    fn build_call2(&mut self, before: &str, mid: &str, left: Code, right: Code) -> Code {
-        left.with_expr(&|left_expr| {
-            right.clone().with_expr(&|right_expr| {
-                Code::Expr(format!("{}({}{}{})", before, left_expr, mid, right_expr))
-            })
-        })
+    fn build_call(&mut self, before: &str, mid: &str, args: Vec<Code>) -> Code {
+        match args.len() {
+            0 => Code::Expr(format!("{}()", before)),
+            1 => args[0].clone().with_expr(&|exp| Code::Expr(format!("{}({})", before, exp))),
+            _ => {
+                let mut content: Code = args[0].clone().with_expr(&|exp| Code::Expr(exp));
+                for arg in args[1..].iter() {
+                    content = content.with_expr(&|content| {
+                        arg.clone().with_expr(&|arg_expr| {
+                                Code::Expr(format!("{}{}{}", content, mid, arg_expr))
+                        })
+                    });
+                }
+                content.with_expr(&|content| {
+                    Code::Expr(format!("{}({})", before, content))
+                })
+            }
+        }
     }
 }
 
@@ -291,7 +300,56 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
 
     fn visit_apply(&mut self, db: &dyn Compiler, state: &mut State, expr: &Apply) -> Res {
         // eprintln!("apply here: {:?}", expr);
-        let val = self.visit(db, state, &expr.inner)?;
+        if let Node::SymNode(sym_node) = &*expr.inner {
+            let op = sym_node.name.as_str();
+
+            match op {
+                "-|" => {
+                    // TODO: handle 'error' values more widly.
+                    if expr.args.len() != 2 {
+                        panic!("TODO");
+                    }
+                    let (left, right) = (expr.args[0].clone(), expr.args[1].clone());
+                    let (left, right) = (self.visit_let(db, state, &left.clone())?, self.visit_let(db, state, &right.clone())?);
+                    let done = Code::If {
+                        condition: Box::new(left),
+                        then: Box::new(right),
+                        then_else: Box::new(Code::Statement("throw 101".to_string())),
+                    };
+                    return Ok(done);
+                }
+                ";" => {
+                    if expr.args.len() != 2 {
+                        panic!("TODO");
+                    }
+                    let (left, right) = (expr.args[0].clone(), expr.args[1].clone());
+                    let (left, right) = (self.visit_let(db, state, &left.clone())?, self.visit_let(db, state, &right.clone())?);
+                    // TODO: handle 'error' values more widly.
+                    // TODO: ORDERING
+                    return Ok(left.merge(right));
+                }
+                _ => {}
+            }
+            if let Some(info) = db.get_extern(op.to_string())? {
+                let mut arg_exprs = vec![];
+                for arg in expr.args.iter() {
+                    let arg: Code = self.visit_let(db, state, &arg.clone())?;
+                    let arg: Code = if info.cpp.arg_processor.as_str() == "" {
+                        arg
+                    } else {
+                        self.build_call(info.cpp.arg_processor.as_str(), "", vec![arg])
+                    };
+                    arg_exprs.push(arg);
+                }
+                self.includes.insert(info.cpp.includes);
+                self.flags.extend(info.cpp.flags);
+                return Ok(self.build_call(
+                    info.cpp.code.as_str(),
+                    info.cpp.arg_joiner.as_str(),
+                    arg_exprs
+                ));
+            }
+        }
         let mut arg_exprs = vec![];
         for arg in expr.args.iter() {
             let body = self.visit(db, state, &arg.value)?;
@@ -313,7 +371,7 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
         }
         // TODO: require label is none.
         let arg_str = arg_exprs.join(", ");
-        match val {
+        match self.visit(db, state, &expr.inner)? {
             Code::Expr(expr) => {
                 let with_args = format!("{}({})", expr, arg_str);
                 Ok(Code::Expr(with_args))
@@ -323,11 +381,6 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
     }
 
     fn visit_let(&mut self, db: &dyn Compiler, state: &mut State, expr: &Let) -> Res {
-        // eprintln!(
-        //     "let here: {:?}, {:?}",
-        //     expr.get_info().defined_at,
-        //     expr.name
-        // );
         let filename = expr
             .get_info()
             .loc
@@ -378,68 +431,6 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
             return Ok(node);
         }
         Ok(body.with_expr(&|x| Code::Statement(format!("const auto {} = {}", name, x))))
-    }
-
-    fn visit_un_op(&mut self, db: &dyn Compiler, state: &mut State, expr: &UnOp) -> Res {
-        let code = self.visit(db, state, &expr.inner)?;
-        let info = expr.get_info();
-        let op = expr.name.as_str();
-        if let Some(info) = db.get_extern(op.to_string())? {
-            self.includes.insert(info.cpp.includes);
-            self.flags.extend(info.cpp.flags);
-            let code = if info.cpp.arg_processor.as_str() == "" {
-                code
-            } else {
-                self.build_call1(info.cpp.arg_processor.as_str(), code)
-            };
-            return Ok(self.build_call1(info.cpp.arg_joiner.as_str(), code));
-        }
-        Err(TError::UnknownPrefixOperator(op.to_string(), info))
-    }
-
-    fn visit_bin_op(&mut self, db: &dyn Compiler, state: &mut State, expr: &BinOp) -> Res {
-        let info = expr.get_info();
-        let left = self.visit(db, state, &expr.left.clone())?;
-        let right = self.visit(db, state, &expr.right.clone())?;
-        // TODO: require 2 children
-        // TODO: Short circuiting of deps.
-        let op = expr.name.as_str();
-        match op {
-            "-|" => {
-                // TODO: handle 'error' values more widly.
-                let done = Code::If {
-                    condition: Box::new(left),
-                    then: Box::new(right),
-                    then_else: Box::new(Code::Statement("throw 101".to_string())),
-                };
-                return Ok(done);
-            }
-            ";" => {
-                // TODO: handle 'error' values more widly.
-                // TODO: ORDERING
-                return Ok(left.merge(right));
-            }
-            _ => {}
-        }
-        if let Some(info) = db.get_extern(op.to_string())? {
-            self.includes.insert(info.cpp.includes);
-            self.flags.extend(info.cpp.flags);
-            let (left, right) = if info.cpp.arg_processor.as_str() == "" {
-                (left, right)
-            } else {
-                (
-                    self.build_call1(info.cpp.arg_processor.as_str(), left),
-                    self.build_call1(info.cpp.arg_processor.as_str(), right),
-                )
-            };
-            return Ok(self.build_call2(
-                info.cpp.code.as_str(),
-                info.cpp.arg_joiner.as_str(),
-                left,
-                right,
-            ));
-        }
-        Err(TError::UnknownInfixOperator(op.to_string(), info))
     }
 
     fn handle_error(&mut self, _db: &dyn Compiler, _state: &mut State, expr: &Err) -> Res {

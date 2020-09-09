@@ -113,39 +113,6 @@ impl ToNode for Let {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub struct UnOp {
-    pub name: String,
-    pub inner: Box<Node>,
-    pub info: Info,
-}
-
-impl ToNode for UnOp {
-    fn to_node(self) -> Node {
-        Node::UnOpNode(self)
-    }
-    fn get_info(&self) -> Info {
-        self.info.clone()
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub struct BinOp {
-    pub name: String,
-    pub left: Box<Node>,
-    pub right: Box<Node>,
-    pub info: Info,
-}
-
-impl ToNode for BinOp {
-    fn to_node(self) -> Node {
-        Node::BinOpNode(self)
-    }
-    fn get_info(&self) -> Info {
-        self.info.clone()
-    }
-}
-
 #[derive(Clone)]
 pub struct Info {
     pub loc: Option<Loc>,
@@ -199,8 +166,6 @@ pub enum Node {
     PrimNode(Prim),
     ApplyNode(Apply),
     LetNode(Let),
-    UnOpNode(UnOp),
-    BinOpNode(BinOp),
 }
 
 impl std::fmt::Debug for Node {
@@ -212,8 +177,6 @@ impl std::fmt::Debug for Node {
             PrimNode(n) => n.fmt(f),
             ApplyNode(n) => n.fmt(f),
             LetNode(n) => n.fmt(f),
-            UnOpNode(n) => n.fmt(f),
-            BinOpNode(n) => n.fmt(f),
         }
     }
 }
@@ -241,8 +204,6 @@ impl ToNode for Node {
             PrimNode(n) => n.get_info(),
             ApplyNode(n) => n.get_info(),
             LetNode(n) => n.get_info(),
-            UnOpNode(n) => n.get_info(),
-            BinOpNode(n) => n.get_info(),
         }
     }
 }
@@ -336,18 +297,6 @@ pub trait Visitor<State, Res, Final, Start = Root> {
         e: &Apply,
     ) -> Result<Res, TError>;
     fn visit_let(&mut self, db: &dyn Compiler, state: &mut State, e: &Let) -> Result<Res, TError>;
-    fn visit_un_op(
-        &mut self,
-        db: &dyn Compiler,
-        state: &mut State,
-        e: &UnOp,
-    ) -> Result<Res, TError>;
-    fn visit_bin_op(
-        &mut self,
-        db: &dyn Compiler,
-        state: &mut State,
-        e: &BinOp,
-    ) -> Result<Res, TError>;
 
     fn visit(&mut self, db: &dyn Compiler, state: &mut State, e: &Node) -> Result<Res, TError> {
         // eprintln!("{:?}", e);
@@ -358,8 +307,6 @@ pub trait Visitor<State, Res, Final, Start = Root> {
             PrimNode(n) => self.visit_prim(db, state, n),
             ApplyNode(n) => self.visit_apply(db, state, n),
             LetNode(n) => self.visit_let(db, state, n),
-            UnOpNode(n) => self.visit_un_op(db, state, n),
-            BinOpNode(n) => self.visit_bin_op(db, state, n),
         }
     }
 

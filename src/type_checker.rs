@@ -30,17 +30,6 @@ pub fn infer(db: &dyn Compiler, expr: &Node) -> Result<Node, TError> {
                 "Type",
             ),
         },
-        UnOpNode(UnOp {
-            name: _,
-            inner: _,
-            info: _,
-        }) => panic!("TODO Impl type checking for UnOp"),
-        BinOpNode(BinOp {
-            name: _,
-            left: _,
-            right: _,
-            info: _,
-        }) => panic!("TODO Impl type checking for BinOp"),
         SymNode(Sym { name: _, info: _ }) => panic!("TODO Impl type checking for Sym"),
         ApplyNode(Apply {
             inner: _,
