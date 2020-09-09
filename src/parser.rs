@@ -223,7 +223,7 @@ fn led(
             TokenType::Op => {
                 let lbp = binding_power(db, &head)?;
                 let assoc = binding_dir(db, &head)?;
-                let ( right, new_toks) = expr(
+                let (right, new_toks) = expr(
                     db,
                     toks,
                     lbp - match assoc {
@@ -231,8 +231,30 @@ fn led(
                         Direction::Right => 1,
                     },
                 )?;
-                if head.value == "=" {
-                    return match left {
+                if head.value != "=" {
+                    return Ok((
+                        BinOp {
+                            info: head.get_info(),
+                            name: head.value,
+                            left: Box::new(left),
+                            right: Box::new(right),
+                        }
+                        .to_node(),
+                        new_toks,
+                    ));
+                }
+                match left {
+                    Node::SymNode(s) => Ok((
+                        Let {
+                            name: s.name,
+                            args: None,
+                            value: Box::new(right),
+                            info: head.get_info(),
+                        }
+                        .to_node(),
+                        new_toks,
+                    )),
+                    Node::ApplyNode(a) => match *a.inner {
                         Node::SymNode(s) => Ok((
                             Let {
                                 name: s.name,
