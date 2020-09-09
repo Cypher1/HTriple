@@ -1,8 +1,9 @@
 use std::fs::read_to_string;
-
-use takolib::database::{{DB, Compiler}};
-use takolib::cli_options::Options;
 use pretty_assertions::assert_eq;
+
+use takolib::database::{DB, Compiler};
+use takolib::cli_options::Options;
+use takolib::extern_impls::{State, get_local};
 
 #[derive(Debug, PartialEq)]
 pub enum TestResult {
@@ -28,9 +29,9 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
     let mut stdout: Vec<String> = vec![];
     let result = {
         use takolib::ast::{Prim::{I32, Str}, Info};
-        use takolib::interpreter::Res;
-        let mut print_impl = &mut |_: &dyn Compiler, args: Vec<&dyn Fn() -> takolib::interpreter::Res>, _: takolib::ast::Info| -> Res {
-            stdout.push(match args[0]()? {
+        use takolib::extern_impls::Res;
+        let mut print_impl = &mut |_: &dyn Compiler, state: &mut State, _: takolib::ast::Info| -> Res {
+            stdout.push(match get_local(state, "print_for_golden", "it") {
                 Str(s,_)=>s,
                 s=>format!("{:?}", s)
             });

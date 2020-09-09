@@ -3,34 +3,96 @@ use std::collections::HashMap;
 use crate::ast::{Info, Prim::*};
 use crate::database::Compiler;
 use crate::errors::TError;
-use crate::interpreter::{prim_add_strs, prim_pow, Res};
+use super::extern_impls::*;
 use crate::types::{
     bit_type, i32_type, number_type, string_type, type_type, unit_type, variable, void_type, Type,
     Type::*,
 };
 
-pub type FuncImpl = Box<dyn Fn(&dyn Compiler, Vec<&dyn Fn() -> Res>, Info) -> Res>;
+pub type FuncImpl = Box<dyn Fn(&dyn Compiler, &mut State, Info) -> Res>;
+
+/*
+fn visit_bin_op(db: &dyn Compiler, expr: &BinOp) -> Res {
+    use Prim::*;
+    if db.debug() > 1 {
+        eprintln!("evaluating binop {}", expr.clone().to_node());
+    }
+    let info = expr.clone().get_info();
+    let l = self.visit(db, state, &expr.left);
+    let mut r = || self.visit(db, state, &expr.right);
+    match expr.name.as_str() {
+        "+" => prim_add(&l?, &r()?, info),
+        "++" => prim_add_strs(&l?, &r()?, info),
+        "==" => prim_eq(&l?, &r()?, info),
+        "!=" => prim_neq(&l?, &r()?, info),
+        ">" => prim_gt(&l?, &r()?, info),
+        "<" => prim_gt(&r()?, &l?, info),
+        ">=" => prim_gte(&l?, &r()?, info),
+        "<=" => prim_gte(&r()?, &l?, info),
+        "-" => prim_sub(&l?, &r()?, info),
+        "*" => prim_mul(&l?, &r()?, info),
+        "/" => prim_div(&l?, &r()?, info),
+        "%" => prim_mod(&l?, &r()?, info),
+        "^" => prim_pow(&l?, &r()?, info),
+        "||" => prim_or(&l?, &r()?, info),
+        "&" => prim_type_and(l?, r()?, info),
+        "|" => prim_type_or(l?, r()?, info),
+        ";" => {
+            l?;
+            Ok(r()?)
+        }
+        "?" => match l {
+            Err(_) => r(),
+            l => l,
+        },
+        "-|" => match l {
+            //TODO: Add pattern matching.
+            Ok(Bool(false, info)) => Err(TError::RequirementFailure(info)),
+            Ok(Lambda(_)) => Ok(Lambda(Box::new(expr.clone().to_node()))),
+            Ok(_) => r(),
+            l => l,
+        },
+        ":" => {
+            let value = l?;
+            let ty = r()?;
+            let _type_of_value = infer(db, &value.clone().to_node());
+            // Check subtyping relationship of type_of_value and ty.
+            let sub_type = true;
+            if sub_type {
+                return Ok(value);
+            }
+            Err(TError::TypeMismatch2(
+                "Failure assertion of type annotation at runtime".to_string(),
+                Box::new(value),
+                Box::new(ty.clone()),
+                ty.get_info(),
+            ))
+        }
+        op => Err(TError::UnknownInfixOperator(op.to_string(), info)),
+    }
+}
+*/
 
 pub fn get_implementation(name: String) -> Option<FuncImpl> {
     match name.as_str() {
-        "print" => Some(Box::new(|_, args, info| {
-            let val = args[0]()?;
+        "print" => Some(Box::new(|_, state, info| {
+            let val = get_local(state, "print", "it");
             match val {
                 Str(s, _) => print!("{}", s),
                 s => print!("{:?}", s),
             };
             Ok(I32(0, info))
         })),
-        "eprint" => Some(Box::new(|_, args, info| {
-            let val = args[0]()?;
+        "eprint" => Some(Box::new(|_, state, info| {
+            let val = get_local(state, "eprint", "it");
             match val {
                 Str(s, _) => eprint!("{}", s),
                 s => eprint!("{:?}", s),
             };
             Ok(I32(0, info))
         })),
-        "exit" => Some(Box::new(|_, args, _| {
-            let val = args[0]()?;
+        "exit" => Some(Box::new(|_, state, _| {
+            let val = get_local(state, "exit", "it");
             let code = match val {
                 I32(n, _) => n,
                 s => {
@@ -40,26 +102,63 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             };
             std::process::exit(code);
         })),
-        "++" => Some(Box::new(|_, args, info| {
-            prim_add_strs(&args[0]()?, &args[1]()?, info)
+        "!" => Some(Box::new(|_, state, info| {
+            // TODO require 1 arg
+            let i = get_local(state, "!", "it");
+            match i {
+                Bool(n, _) => Ok(Bool(!n, info)),
+                _ => Err(TError::TypeMismatch("!".to_string(), Box::new(i), info)),
+            }
         })),
-        "^" => Some(Box::new(|_, args, info| {
-            prim_pow(&args[0]()?, &args[1]()?, info)
+        "+" =>  Some(Box::new(|_, state, info| {
+            // TODO require 1 arg
+            let i = get_local(state, "+", "it");
+            match i {
+                // TODO require 1 arg
+                I32(n, _) => Ok(I32(n, info)),
+                _ => Err(TError::TypeMismatch("+".to_string(), Box::new(i), info)),
+            }
         })),
-
-        "argc" => Some(Box::new(|db, _, info| {
+        "-" => Some(Box::new(|_, state, info| {
+            // TODO require 1 arg
+            let i = get_local(state, "-", "it");
+            match i {
+                // TODO require 1 arg
+                I32(n, _) => Ok(I32(-n, info)),
+                _ => Err(TError::TypeMismatch("-".to_string(), Box::new(i), info)),
+            }
+        })),
+        "&&" => Some(Box::new(|_, state, info| {
+            let left = get_local(state, "&&", "left");
+            let right = get_local(state, "&&", "right");
+            prim_and(&left, &right, info)
+        })),
+        "++" => Some(Box::new(|_, state, info| {
+            let left = get_local(state, "++", "left");
+            let right = get_local(state, "++", "right");
+            prim_add_strs(&left, &right, info)
+        })),
+        "^" => Some(Box::new(|_, state, info| {
+            let left = get_local(state, "^", "left");
+            let right = get_local(state, "^", "right");
+            prim_pow(&left, &right, info)
+        })),
+        "argc" => Some(Box::new(|db, _state, info| {
             Ok(I32(db.options().interpreter_args.len() as i32, info))
         })),
-        "argv" => Some(Box::new(|db, args, info| match args[0]()? {
-            I32(ind, _) => Ok(Str(
-                db.options().interpreter_args[ind as usize].clone(),
-                info,
-            )),
-            value => Err(TError::TypeMismatch(
-                "Expected index to be of type i32".to_string(),
-                Box::new(value),
-                info,
-            )),
+        "argv" => Some(Box::new(|db, state, info| {
+            let i = get_local(state, "argv", "it");
+            match i {
+                I32(ind, _) => Ok(Str(
+                    db.options().interpreter_args[ind as usize].clone(),
+                    info,
+                )),
+                value => Err(TError::TypeMismatch(
+                    "Expected index to be of type i32".to_string(),
+                    Box::new(value),
+                    info,
+                )),
+            }
         })),
         "I32" => Some(Box::new(|_db, _, info| Ok(TypeValue(i32_type(), info)))),
         "Number" => Some(Box::new(|_db, _, info| Ok(TypeValue(number_type(), info)))),

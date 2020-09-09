@@ -3,11 +3,10 @@ use std::collections::HashMap;
 use super::ast::*;
 use super::database::Compiler;
 use super::errors::TError;
-use super::type_checker::infer;
+use super::extern_impls::{Res, State, Frame};
 
-type Frame = HashMap<String, Node>;
-
-pub type ImplFn<'a> = &'a mut dyn FnMut(&dyn Compiler, Vec<&dyn Fn() -> Res>, Info) -> Res;
+//Vec<&dyn Fn() -> Res>
+pub type ImplFn<'a> = &'a mut dyn FnMut(&dyn Compiler, &mut State, Info) -> Res;
 
 // Walks the AST interpreting it.
 pub struct Interpreter<'a> {
@@ -22,7 +21,7 @@ impl<'a> Default for Interpreter<'a> {
     }
 }
 
-fn find_symbol<'a>(state: &'a [Frame], name: &str) -> Option<&'a Node> {
+fn find_symbol<'a>(state: &'a [Frame], name: &str) -> Option<&'a Prim> {
     for frame in state.iter().rev() {
         if let Some(val) = frame.get(name) {
             return Some(val); // This is the variable
@@ -31,234 +30,7 @@ fn find_symbol<'a>(state: &'a [Frame], name: &str) -> Option<&'a Node> {
     }
     None
 }
-
-fn prim_add(l: &Prim, r: &Prim, info: Info) -> Res {
-    use crate::types::sum;
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), Bool(r, _)) => Ok(I32(if *l { 1 } else { 0 } + if *r { 1 } else { 0 }, info)),
-        (Bool(l, _), I32(r, _)) => Ok(I32(r.wrapping_add(if *l { 1 } else { 0 }), info)),
-        (Bool(l, _), Str(r, _)) => Ok(Str(l.to_string() + &r.to_string(), info)),
-        (I32(l, _), Bool(r, _)) => Ok(I32(l.wrapping_add(if *r { 1 } else { 0 }), info)),
-        (I32(l, _), I32(r, _)) => Ok(I32(l.wrapping_add(*r), info)),
-        (I32(l, _), Str(r, _)) => Ok(Str(l.to_string() + &r.to_string(), info)),
-        (Str(l, _), Bool(r, _)) => Ok(Str(l.to_string() + &r.to_string(), info)),
-        (Str(l, _), I32(r, _)) => Ok(Str(l.to_string() + &r.to_string(), info)),
-        (Str(l, _), Str(r, _)) => Ok(Str(l.to_string() + &r.to_string(), info)),
-        (TypeValue(l, _), TypeValue(r, _)) => Ok(TypeValue(sum(vec![l.clone(), r.clone()])?, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "+".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-pub fn prim_add_strs(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    let to_str = |val: &Prim| match val {
-        Bool(v, _) => format!("{}", v),
-        I32(v, _) => format!("{}", v),
-        Str(v, _) => v.clone(),
-        Lambda(v) => format!("{}", v),
-        TypeValue(v, _) => format!("{}", v),
-    };
-    Ok(Str(to_str(l) + &to_str(r), info))
-}
-
-fn prim_eq(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), Bool(r, _)) => Ok(Bool(*l == *r, info)),
-        (I32(l, _), I32(r, _)) => Ok(Bool(l == r, info)),
-        (Str(l, _), Str(r, _)) => Ok(Bool(l == r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "==".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_neq(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), Bool(r, _)) => Ok(Bool(*l != *r, info)),
-        (I32(l, _), I32(r, _)) => Ok(Bool(l != r, info)),
-        (Str(l, _), Str(r, _)) => Ok(Bool(l != r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "!=".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_gt(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), Bool(r, _)) => Ok(Bool(*l & !(*r), info)),
-        (I32(l, _), I32(r, _)) => Ok(Bool(l > r, info)),
-        (Str(l, _), Str(r, _)) => Ok(Bool(l > r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            ">".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_gte(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), Bool(r, _)) => Ok(Bool(*l >= *r, info)),
-        (I32(l, _), I32(r, _)) => Ok(Bool(l >= r, info)),
-        (Str(l, _), Str(r, _)) => Ok(Bool(l >= r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            ">=".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_sub(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (I32(l, _), Bool(r, _)) => Ok(I32(l - if *r { 1 } else { 0 }, info)),
-        (I32(l, _), I32(r, _)) => Ok(I32(l - r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "-".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_mul(l: &Prim, r: &Prim, info: Info) -> Res {
-    use crate::types::record;
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), I32(r, _)) => Ok(I32(if *l { *r } else { 0 }, info)),
-        (Bool(l, _), Str(r, _)) => Ok(Str(if *l { r.to_string() } else { "".to_string() }, info)),
-        (I32(l, _), Bool(r, _)) => Ok(I32(if *r { *l } else { 0 }, info)),
-        (I32(l, _), I32(r, _)) => Ok(I32(l.wrapping_mul(*r), info)),
-        (Str(l, _), Bool(r, _)) => Ok(Str(if *r { l.to_string() } else { "".to_string() }, info)),
-        (TypeValue(l, _), TypeValue(r, _)) => {
-            Ok(TypeValue(record(vec![l.clone(), r.clone()])?, info))
-        }
-        (l, r) => Err(TError::TypeMismatch2(
-            "*".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_div(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (I32(l, _), I32(r, _)) => Ok(I32(l / r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "/".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_mod(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (I32(l, _), I32(r, _)) => Ok(I32(l % r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "%".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_and(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), Bool(r, _)) => Ok(Bool(*l && *r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "&&".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_or(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (Bool(l, _), Bool(r, _)) => Ok(Bool(*l || *r, info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "||".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
-fn prim_type_and(l: Prim, r: Prim, info: Info) -> Res {
-    use crate::types::Type;
-    use Prim::*;
-    match (l, r) {
-        (TypeValue(l, _), TypeValue(r, _)) => Ok(TypeValue(Type::Product(set!(l, r)), info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "&".to_string(),
-            Box::new(l),
-            Box::new(r),
-            info,
-        )),
-    }
-}
-
-fn prim_type_or(l: Prim, r: Prim, info: Info) -> Res {
-    use crate::types::Type;
-    use Prim::*;
-    match (l, r) {
-        (TypeValue(l, _), TypeValue(r, _)) => Ok(TypeValue(Type::Union(set!(l, r)), info)),
-        (l, r) => Err(TError::TypeMismatch2(
-            "|".to_string(),
-            Box::new(l),
-            Box::new(r),
-            info,
-        )),
-    }
-}
-
-pub fn prim_pow(l: &Prim, r: &Prim, info: Info) -> Res {
-    use Prim::*;
-    match (l, r) {
-        (I32(l, _), Bool(r, _)) => Ok(I32(if *r { *l } else { 1 }, info)),
-        (I32(l, _), I32(r, _)) => Ok(I32(i32::pow(*l, *r as u32), info)), // TODO: require pos pow
-        (l, r) => Err(TError::TypeMismatch2(
-            "^".to_string(),
-            Box::new((*l).clone()),
-            Box::new((*r).clone()),
-            info,
-        )),
-    }
-}
-
 // TODO: Return nodes.
-pub type Res = Result<Prim, TError>;
-type State = Vec<Frame>;
 impl<'a> Visitor<State, Prim, Prim> for Interpreter<'a> {
     fn visit_root(&mut self, db: &dyn Compiler, root: &Root) -> Res {
         let mut state = vec![HashMap::new()];
@@ -270,51 +42,24 @@ impl<'a> Visitor<State, Prim, Prim> for Interpreter<'a> {
             eprintln!("evaluating let {}", expr.clone().to_node());
         }
         let name = &expr.name;
-        let it_val = || {
-            state.last().map(|frame| {
-                match frame
-                    .get("it")
-                    .unwrap_or_else(|| panic!("{} needs an argument", expr.name))
-                    .clone()
-                {
-                    crate::ast::Node::PrimNode(prim) => prim,
-                    node => panic!("{:?}", node),
-                }
-            })
-        };
-        let it_arg = || Ok(it_val().unwrap());
         let value = find_symbol(&state, name);
-        match value {
-            Some(Node::PrimNode(prim)) => {
-                if db.debug() > 0 {
-                    eprintln!("from stack {}", prim.clone().to_node());
-                }
-                return Ok(prim.clone());
+        if let Some(value) = value {
+            if db.debug() > 0 {
+                eprintln!("from stack {}", value.clone().to_node());
             }
-            Some(val) => {
-                if db.debug() > 0 {
-                    eprintln!("running lambda {} -> {}", name, val);
-                }
-                let mut next = state.clone();
-                let result = self.visit(db, &mut next, &val.clone())?;
-                if db.debug() > 0 {
-                    eprintln!("got {}", result.clone().to_node());
-                }
-                return Ok(result);
-            } // This is the variable
-            None => {}
+            return Ok(value.clone());
         }
         if db.debug() > 2 {
             eprintln!("checking for interpreter impl {}", expr.name.clone());
         }
         if let Some(extern_impl) = &mut self.impls.get_mut(name) {
-            return extern_impl(db, vec![&it_arg], expr.get_info());
+            return extern_impl(db, state, expr.get_info());
         }
         if db.debug() > 2 {
             eprintln!("checking for default impl {}", expr.name.clone());
         }
         if let Some(default_impl) = crate::externs::get_implementation(name.to_owned()) {
-            return default_impl(db, vec![&it_arg], expr.get_info());
+            return default_impl(db, state, expr.get_info());
         }
         Err(TError::UnknownSymbol(name.to_string(), expr.info.clone()))
     }
@@ -343,10 +88,11 @@ impl<'a> Visitor<State, Prim, Prim> for Interpreter<'a> {
         }
 
         if expr.args.is_some() {
+            // TODO double check
             state
                 .last_mut()
                 .unwrap()
-                .insert(expr.name.clone(), expr.value.clone().to_node());
+                .insert(expr.name.clone(), Prim::Lambda(Box::new(expr.value.clone().to_node())));
             return Ok(Prim::Lambda(Box::new(expr.to_sym().to_node())));
         }
         // Add a new scope
@@ -357,97 +103,9 @@ impl<'a> Visitor<State, Prim, Prim> for Interpreter<'a> {
         match state.last_mut() {
             None => panic!("there is no stack frame"),
             Some(frame) => {
-                frame.insert(expr.name.clone(), result.clone().to_node());
+                frame.insert(expr.name.clone(), result.clone());
                 Ok(result)
             }
-        }
-    }
-
-    fn visit_un_op(&mut self, db: &dyn Compiler, state: &mut State, expr: &UnOp) -> Res {
-        use Prim::*;
-        if db.debug() > 1 {
-            eprintln!("evaluating unop {}", expr.clone().to_node());
-        }
-        let i = self.visit(db, state, &expr.inner)?;
-        let info = expr.clone().get_info();
-        match expr.name.as_str() {
-            "!" => match i {
-                Bool(n, _) => Ok(Bool(!n, info)),
-                Lambda(_) => Ok(Lambda(Box::new(expr.clone().to_node()))),
-                _ => Err(TError::TypeMismatch("!".to_string(), Box::new(i), info)),
-            },
-            "+" => match i {
-                I32(n, _) => Ok(I32(n, info)),
-                Lambda(_) => Ok(Lambda(Box::new(expr.clone().to_node()))),
-                _ => Err(TError::TypeMismatch("+".to_string(), Box::new(i), info)),
-            },
-            "-" => match i {
-                I32(n, _) => Ok(I32(-n, info)),
-                Lambda(_) => Ok(Lambda(Box::new(expr.clone().to_node()))),
-                _ => Err(TError::TypeMismatch("-".to_string(), Box::new(i), info)),
-            },
-            op => Err(TError::UnknownPrefixOperator(op.to_string(), info)),
-        }
-    }
-
-    fn visit_bin_op(&mut self, db: &dyn Compiler, state: &mut State, expr: &BinOp) -> Res {
-        use Prim::*;
-        if db.debug() > 1 {
-            eprintln!("evaluating binop {}", expr.clone().to_node());
-        }
-        let info = expr.clone().get_info();
-        let l = self.visit(db, state, &expr.left);
-        let mut r = || self.visit(db, state, &expr.right);
-        match expr.name.as_str() {
-            "+" => prim_add(&l?, &r()?, info),
-            "++" => prim_add_strs(&l?, &r()?, info),
-            "==" => prim_eq(&l?, &r()?, info),
-            "!=" => prim_neq(&l?, &r()?, info),
-            ">" => prim_gt(&l?, &r()?, info),
-            "<" => prim_gt(&r()?, &l?, info),
-            ">=" => prim_gte(&l?, &r()?, info),
-            "<=" => prim_gte(&r()?, &l?, info),
-            "-" => prim_sub(&l?, &r()?, info),
-            "*" => prim_mul(&l?, &r()?, info),
-            "/" => prim_div(&l?, &r()?, info),
-            "%" => prim_mod(&l?, &r()?, info),
-            "^" => prim_pow(&l?, &r()?, info),
-            "&&" => prim_and(&l?, &r()?, info),
-            "||" => prim_or(&l?, &r()?, info),
-            "&" => prim_type_and(l?, r()?, info),
-            "|" => prim_type_or(l?, r()?, info),
-            ";" => {
-                l?;
-                Ok(r()?)
-            }
-            "?" => match l {
-                Err(_) => r(),
-                l => l,
-            },
-            "-|" => match l {
-                //TODO: Add pattern matching.
-                Ok(Bool(false, info)) => Err(TError::RequirementFailure(info)),
-                Ok(Lambda(_)) => Ok(Lambda(Box::new(expr.clone().to_node()))),
-                Ok(_) => r(),
-                l => l,
-            },
-            ":" => {
-                let value = l?;
-                let ty = r()?;
-                let _type_of_value = infer(db, &value.clone().to_node());
-                // Check subtyping relationship of type_of_value and ty.
-                let sub_type = true;
-                if sub_type {
-                    return Ok(value);
-                }
-                Err(TError::TypeMismatch2(
-                    "Failure assertion of type annotation at runtime".to_string(),
-                    Box::new(value),
-                    Box::new(ty.clone()),
-                    ty.get_info(),
-                ))
-            }
-            op => Err(TError::UnknownInfixOperator(op.to_string(), info)),
         }
     }
 
