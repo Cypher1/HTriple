@@ -3,7 +3,6 @@ use pretty_assertions::assert_eq;
 
 use takolib::database::{DB, Compiler};
 use takolib::cli_options::Options;
-use takolib::extern_impls::State;
 use takolib::interpreter::Interpreter;
 
 #[derive(Debug, PartialEq)]
@@ -32,7 +31,7 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
         use takolib::ast::{Prim::{I32, Str}, Info};
         use takolib::extern_impls::Res;
         let mut print_impl = &mut |interp: &mut Interpreter, _: &dyn Compiler, _: takolib::ast::Info| -> Res {
-            stdout.push(match interp.get_local("print_for_golden", "it") {
+            stdout.push(match interp.get_local("print_for_golden", "it")? {
                 Str(s,_)=>s,
                 s=>format!("{:?}", s)
             });

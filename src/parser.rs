@@ -26,14 +26,8 @@ fn binding_power(db: &dyn Compiler, tok: &Token) -> Result<i32, TError> {
     })
 }
 
-fn binding_laziness(db: &dyn Compiler, tok: &Token) -> Result<bool, TError> {
-    Ok(match binding(db, tok)? {
-        Semantic::Operator { laziness, .. } => laziness,
-        Semantic::Func => false,
-    })
-}
-
 fn get_defs(root: Node) -> Vec<Let> {
+    // TODO: Replace this with a proper def list parser.
     use Node::*;
     let mut all_args = vec![];
 
@@ -52,7 +46,10 @@ fn get_defs(root: Node) -> Vec<Let> {
         }) => {
             if SymNode(Sym{name: ",".to_string(), info: Info::default()}) == *inner {
                 for arg in args {
-                    all_args.append(&mut get_defs(arg.to_node()));
+                    match *arg.value {
+                        PrimNode(Prim::Lambda(n)) => all_args.append(&mut get_defs(*n)),
+                        node => panic!("Unexpected node {}", node),
+                    }
                 }
             } else {
                 all_args.push(Let {
@@ -234,43 +231,43 @@ fn led(
                         Direction::Right => 1,
                     },
                 )?;
-                if head.value != "=" {
-                    return Ok((
-                        bin_op(
-                            head.value.as_str(),
-                            left,
-                            right,
-                            head.get_info(),
-                        ),
-                        new_toks,
-                    ));
-                }
-                match left {
-                    Node::SymNode(s) => Ok((
-                        Let {
-                            name: s.name,
-                            args: None,
-                            value: Box::new(right),
-                            info: head.get_info(),
-                        }
-                        .to_node(),
-                        new_toks,
-                    )),
-                    Node::ApplyNode(a) => match *a.inner {
+                if head.value == "=" {
+                    return match left {
                         Node::SymNode(s) => Ok((
                             Let {
                                 name: s.name,
-                                args: Some(a.args.iter().map(|l| l.to_sym()).collect()),
+                                args: None,
                                 value: Box::new(right),
                                 info: head.get_info(),
                             }
                             .to_node(),
                             new_toks,
                         )),
-                        _ => panic!(format!("Cannot assign to {}", a.to_node())),
-                    },
-                    _ => panic!(format!("Cannot assign to {}", left)),
+                        Node::ApplyNode(a) => match *a.inner {
+                            Node::SymNode(s) => Ok((
+                                Let {
+                                    name: s.name,
+                                    args: Some(a.args.iter().map(|l| l.to_sym()).collect()),
+                                    value: Box::new(right),
+                                    info: head.get_info(),
+                                }
+                                .to_node(),
+                                new_toks,
+                            )),
+                            _ => panic!(format!("Cannot assign to {}", a.to_node())),
+                        },
+                        _ => panic!(format!("Cannot assign to {}", left)),
+                    };
                 }
+                Ok((
+                    bin_op(
+                        head.value.as_str(),
+                        left,
+                        right,
+                        head.get_info(),
+                    ),
+                    new_toks,
+                ))
             }
             TokenType::CloseBracket => panic!("Unexpected close bracket"),
             TokenType::OpenBracket => {

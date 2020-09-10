@@ -34,34 +34,34 @@ fn find_symbol<'a>(state: &'a [Frame], name: &str) -> Option<&'a Prim> {
 
 
 impl<'a> Interpreter<'a> {
-    pub fn eval_local_maybe(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Option<Prim> {
+    pub fn eval_local_maybe(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Result<Option<Prim>, TError> {
         if let Some(frame) = self.state.last() {
-            return match frame.get(name).cloned() {
+            return Ok(match frame.get(name).cloned() {
                 None => None,
-                Some(Prim::Lambda(func)) => Some(self.visit(db, &mut (), &*func).expect("TODO handle this")),
+                Some(Prim::Lambda(func)) => Some(self.visit(db, &mut (), &*func)?),
                 val => val,
-            };
+            });
         }
         panic!("no frame for function {}", function_name)
     }
 
-    pub fn eval_local(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Prim {
-        if let Some(local) = self.eval_local_maybe(db, function_name, name) {
-            return local;
+    pub fn eval_local(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Result<Prim, TError> {
+        if let Some(local) = self.eval_local_maybe(db, function_name, name)? {
+            return Ok(local);
         }
         panic!("{} needs argument named {}", function_name, name)
     }
 
-    pub fn get_local_maybe(&mut self, function_name: &str, name: &str) -> Option<Prim> {
+    pub fn get_local_maybe(&mut self, function_name: &str, name: &str) -> Result<Option<Prim>, TError> {
         if let Some(frame) = self.state.last() {
-            return frame.get(name).cloned();
+            return Ok(frame.get(name).cloned());
         }
         panic!("no frame for function {}", function_name)
     }
 
-    pub fn get_local(&mut self, function_name: &str, name: &str) -> Prim {
-        if let Some(local) = self.get_local_maybe(function_name, name) {
-            return local;
+    pub fn get_local(&mut self, function_name: &str, name: &str) -> Result<Prim, TError> {
+        if let Some(local) = self.get_local_maybe(function_name, name)? {
+            return Ok(local);
         }
         panic!("{} needs argument named {}", function_name, name)
     }
@@ -81,10 +81,13 @@ impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
         let name = &expr.name;
         let value = find_symbol(&self.state, name);
         if let Some(value) = value {
-            if db.debug() > 0 {
+            if db.debug() > -10 {
                 eprintln!("from stack {}", value.clone().to_node());
             }
-            return Ok(value.clone());
+            return Ok(match value.clone() {
+                Prim::Lambda(lam) => self.visit(db, &mut (), &lam)?,
+                val => val,
+            })
         }
         if db.debug() > 2 {
             eprintln!("checking for interpreter impl {}", expr.name.clone());
@@ -102,7 +105,7 @@ impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
     }
 
     fn visit_prim(&mut self, _db: &dyn Compiler, _state: &mut (), expr: &Prim) -> Res {
-        eprintln!("lambda?: {}", expr.clone());
+        eprintln!("prim: {}", expr.clone());
         Ok(expr.clone())
     }
 
@@ -127,11 +130,12 @@ impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
 
         if expr.args.is_some() {
             // TODO double check
+            let val = Prim::Lambda(expr.value.clone());
             self.state
                 .last_mut()
                 .unwrap()
-                .insert(expr.name.clone(), Prim::Lambda(Box::new(expr.value.clone().to_node())));
-            return Ok(Prim::Lambda(Box::new(expr.to_sym().to_node())));
+                .insert(expr.name.clone(), val.clone());
+            return Ok(val);
         }
         // Add a new scope
         self.state.push(Frame::new());
@@ -397,9 +401,9 @@ mod tests {
             let num1: i32 = rng.gen();
             let num2: i32 = rng.gen();
             let res = num1.wrapping_add(num2);
-            eprintln!("mul {:?} + {:?} = {:?}", num1, num2, res);
+            eprintln!("add {:?} + {:?} = {:?}", num1, num2, res);
             assert_eq!(
-                eval_str(format!("mul(x, y)=x+y;mul(x= {}, y= {})", num1, num2)),
+                eval_str(format!("add(x, y)=x+y;add(x= {}, y= {})", num1, num2)),
                 Ok(I32(res, Info::default()))
             );
         }
