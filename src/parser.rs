@@ -26,6 +26,13 @@ fn binding_power(db: &dyn Compiler, tok: &Token) -> Result<i32, TError> {
     })
 }
 
+fn binding_laziness(db: &dyn Compiler, tok: &Token) -> Result<bool, TError> {
+    Ok(match binding(db, tok)? {
+        Semantic::Operator { laziness, .. } => laziness,
+        Semantic::Func => false,
+    })
+}
+
 fn get_defs(root: Node) -> Vec<Let> {
     use Node::*;
     let mut all_args = vec![];
@@ -61,8 +68,8 @@ fn get_defs(root: Node) -> Vec<Let> {
         n => all_args.push(Let {
             name: "it".to_string(),
             args: None,
-            value: Box::new(n.clone()),
             info: n.get_info(),
+            value: Box::new(n),
         }),
     }
     all_args
@@ -219,7 +226,7 @@ fn led(
             TokenType::Op => {
                 let lbp = binding_power(db, &head)?;
                 let assoc = binding_dir(db, &head)?;
-                let (right, new_toks) = expr(
+                let ( right, new_toks) = expr(
                     db,
                     toks,
                     lbp - match assoc {
@@ -432,13 +439,13 @@ fn bin_op(name: &str, left: Node, right: Node, info: Info) -> Node {
         args: vec![
             Let {
                 name: "left".to_string(),
-                value: Box::new(left),
+                value: Box::new(Prim::Lambda(Box::new(left)).to_node()),
                 args: None,
                 info: info.clone(),
             },
             Let {
                 name: "right".to_string(),
-                value: Box::new(right),
+                value: Box::new(Prim::Lambda(Box::new(right)).to_node()),
                 args: None,
                 info: info.clone(),
             },
@@ -458,7 +465,7 @@ fn un_op(name: &str, inner: Node, info: Info) -> Node {
             .to_node(),
         ),
         args: vec![Let {
-            name: "inner".to_string(),
+            name: "it".to_string(),
             value: Box::new(inner),
             args: None,
             info: info.clone(),
@@ -600,7 +607,7 @@ pub mod tests {
                 Let {
                     name: "x".to_string(),
                     args: Some(vec![]),
-                    value: Box::new(un_op("!", str_lit("hello world"), Info::default(),)),
+                    value: Box::new(un_op("!", str_lit("hello world"), Info::default())),
                     info: Info::default(),
                 }
                 .to_node(),

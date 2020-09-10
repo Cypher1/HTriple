@@ -44,7 +44,9 @@ impl Visitor<State, (), String, Node> for PrettyPrint {
                 Ok(())
             }
             Lambda(val) => {
+                write!(state, "{{").unwrap();
                 self.visit(db, state, val)?;
+                write!(state, "}}").unwrap();
                 Ok(())
             }
             TypeValue(val, _) => {

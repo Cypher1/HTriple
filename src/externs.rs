@@ -4,48 +4,21 @@ use crate::ast::{Info, Prim::*};
 use crate::database::Compiler;
 use crate::errors::TError;
 use super::extern_impls::*;
+use super::interpreter::Interpreter;
+use super::ast::{Visitor, Prim::*};
 use crate::types::{
     bit_type, i32_type, number_type, string_type, type_type, unit_type, variable, void_type, Type,
     Type::*,
 };
 
-pub type FuncImpl = Box<dyn Fn(&dyn Compiler, &mut State, Info) -> Res>;
+pub type FuncImpl = Box<dyn Fn(&mut Interpreter, &dyn Compiler, Info) -> Res>;
 
 /*
-fn visit_bin_op(db: &dyn Compiler, expr: &BinOp) -> Res {
-    use Prim::*;
-    if db.debug() > 1 {
-        eprintln!("evaluating binop {}", expr.clone().to_node());
-    }
-    let info = expr.clone().get_info();
-    let l = self.visit(db, state, &expr.left);
-    let mut r = || self.visit(db, state, &expr.right);
-    match expr.name.as_str() {
-        "+" => prim_add(&l?, &r()?, info),
-        "++" => prim_add_strs(&l?, &r()?, info),
-        "==" => prim_eq(&l?, &r()?, info),
-        "!=" => prim_neq(&l?, &r()?, info),
-        ">" => prim_gt(&l?, &r()?, info),
-        "<" => prim_gt(&r()?, &l?, info),
-        ">=" => prim_gte(&l?, &r()?, info),
-        "<=" => prim_gte(&r()?, &l?, info),
-        "-" => prim_sub(&l?, &r()?, info),
-        "*" => prim_mul(&l?, &r()?, info),
-        "/" => prim_div(&l?, &r()?, info),
-        "%" => prim_mod(&l?, &r()?, info),
-        "^" => prim_pow(&l?, &r()?, info),
-        "||" => prim_or(&l?, &r()?, info),
-        "&" => prim_type_and(l?, r()?, info),
-        "|" => prim_type_or(l?, r()?, info),
-        ";" => {
-            l?;
-            Ok(r()?)
-        }
         "?" => match l {
             Err(_) => r(),
             l => l,
         },
-        "-|" => match l {
+        "-|" => match l() {
             //TODO: Add pattern matching.
             Ok(Bool(false, info)) => Err(TError::RequirementFailure(info)),
             Ok(Lambda(_)) => Ok(Lambda(Box::new(expr.clone().to_node()))),
@@ -53,7 +26,7 @@ fn visit_bin_op(db: &dyn Compiler, expr: &BinOp) -> Res {
             l => l,
         },
         ":" => {
-            let value = l?;
+            let value = l()?;
             let ty = r()?;
             let _type_of_value = infer(db, &value.clone().to_node());
             // Check subtyping relationship of type_of_value and ty.
@@ -68,31 +41,28 @@ fn visit_bin_op(db: &dyn Compiler, expr: &BinOp) -> Res {
                 ty.get_info(),
             ))
         }
-        op => Err(TError::UnknownInfixOperator(op.to_string(), info)),
-    }
-}
 */
 
 pub fn get_implementation(name: String) -> Option<FuncImpl> {
     match name.as_str() {
-        "print" => Some(Box::new(|_, state, info| {
-            let val = get_local(state, "print", "it");
+        "print" => Some(Box::new(|interp, db, info| {
+            let val = interp.eval_local(db, "print", "it");
             match val {
                 Str(s, _) => print!("{}", s),
                 s => print!("{:?}", s),
             };
             Ok(I32(0, info))
         })),
-        "eprint" => Some(Box::new(|_, state, info| {
-            let val = get_local(state, "eprint", "it");
+        "eprint" => Some(Box::new(|interp, db, info| {
+            let val = interp.eval_local(db, "eprint", "it");
             match val {
                 Str(s, _) => eprint!("{}", s),
                 s => eprint!("{:?}", s),
             };
             Ok(I32(0, info))
         })),
-        "exit" => Some(Box::new(|_, state, _| {
-            let val = get_local(state, "exit", "it");
+        "exit" => Some(Box::new(|interp, db, _| {
+            let val = interp.eval_local(db, "exit", "it");
             let code = match val {
                 I32(n, _) => n,
                 s => {
@@ -102,52 +72,145 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             };
             std::process::exit(code);
         })),
-        "!" => Some(Box::new(|_, state, info| {
+        "!" => Some(Box::new(|interp, db, info| {
             // TODO require 1 arg
-            let i = get_local(state, "!", "it");
+            let i = interp.eval_local(db, "!", "it");
             match i {
                 Bool(n, _) => Ok(Bool(!n, info)),
                 _ => Err(TError::TypeMismatch("!".to_string(), Box::new(i), info)),
             }
         })),
-        "+" =>  Some(Box::new(|_, state, info| {
+        "+" => Some(Box::new(|interp, db, info| {
             // TODO require 1 arg
-            let i = get_local(state, "+", "it");
+            let i = interp.eval_local_maybe(db, "+", "it");
             match i {
                 // TODO require 1 arg
-                I32(n, _) => Ok(I32(n, info)),
-                _ => Err(TError::TypeMismatch("+".to_string(), Box::new(i), info)),
+                Some(I32(n, _)) => return Ok(I32(n, info)),
+                Some(i) => return Err(TError::TypeMismatch("+".to_string(), Box::new(i), info)),
+                _ => {},
             }
+            let left = interp.eval_local(db, "+", "left");
+            let right = interp.eval_local(db, "+", "right");
+            prim_add(left, right, info)
         })),
-        "-" => Some(Box::new(|_, state, info| {
+        "-" => Some(Box::new(|interp, db, info| {
             // TODO require 1 arg
-            let i = get_local(state, "-", "it");
+            let i = interp.eval_local_maybe(db, "-", "it");
             match i {
                 // TODO require 1 arg
-                I32(n, _) => Ok(I32(-n, info)),
-                _ => Err(TError::TypeMismatch("-".to_string(), Box::new(i), info)),
+                Some(I32(n, _)) => return Ok(I32(-n, info)),
+                Some(i) => return Err(TError::TypeMismatch("-".to_string(), Box::new(i), info)),
+                _ => {},
+            }
+            let left = interp.eval_local(db, "-", "left");
+            let right = interp.eval_local(db, "-", "right");
+            prim_sub(left, right, info)
+        })),
+        "||" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "||", "left");
+            let right = interp.get_local("||", "right");
+            match (left, right) {
+                (Bool(true, _), _) => Ok(Bool(true, info)),
+                (Bool(false, _), Bool(r, _)) => Ok(Bool(r, info)),
+                (Bool(false, _), Lambda(r)) => interp.visit(db, &mut (), &r),
+                (l, r) => Err(TError::TypeMismatch2(
+                    "||".to_string(),
+                    Box::new(l),
+                    Box::new(r),
+                    info,
+                )),
             }
         })),
-        "&&" => Some(Box::new(|_, state, info| {
-            let left = get_local(state, "&&", "left");
-            let right = get_local(state, "&&", "right");
-            prim_and(&left, &right, info)
+        "&&" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "&&", "left");
+            let right = interp.get_local("&&", "right");
+            match (left, right) {
+                (Bool(false, _), _) => Ok(Bool(false, info)),
+                (Bool(true, _), Bool(r, _)) => Ok(Bool(r, info)),
+                (Bool(true, _), Lambda(r)) => interp.visit(db, &mut (), &r),
+                (l, r) => Err(TError::TypeMismatch2(
+                    "&&".to_string(),
+                    Box::new(l),
+                    Box::new(r),
+                    info,
+                )),
+            }
         })),
-        "++" => Some(Box::new(|_, state, info| {
-            let left = get_local(state, "++", "left");
-            let right = get_local(state, "++", "right");
-            prim_add_strs(&left, &right, info)
+        "++" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "++", "left");
+            let right = interp.eval_local(db, "++", "right");
+            prim_add_strs(left, right, info)
         })),
-        "^" => Some(Box::new(|_, state, info| {
-            let left = get_local(state, "^", "left");
-            let right = get_local(state, "^", "right");
-            prim_pow(&left, &right, info)
+        "==" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "==", "left");
+            let right = interp.eval_local(db, "==", "right");
+            prim_eq(left, right, info)
         })),
-        "argc" => Some(Box::new(|db, _state, info| {
+        "!=" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "!=", "left");
+            let right = interp.eval_local(db, "!=", "right");
+            prim_neq(left, right, info)
+        })),
+        ">" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, ">", "left");
+            let right = interp.eval_local(db, ">", "right");
+            prim_gt(left, right, info)
+        })),
+        "<" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "<", "left");
+            let right = interp.eval_local(db, "<", "right");
+            prim_gt(right, left, info)
+        })),
+        ">=" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, ">=", "left");
+            let right = interp.eval_local(db, ">=", "right");
+            prim_gte(left, right, info)
+        })),
+        "<=" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "<=", "left");
+            let right = interp.eval_local(db, "<=", "right");
+            prim_gte(right, left, info)
+        })),
+        "*" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "*", "left");
+            let right = interp.eval_local(db, "*", "right");
+            prim_mul(left, right, info)
+        })),
+        "/" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "/", "left");
+            let right = interp.eval_local(db, "/", "right");
+            prim_div(left, right, info)
+        })),
+        "%" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "%", "left");
+            let right = interp.eval_local(db, "%", "right");
+            prim_mod(left, right, info)
+        })),
+        "^" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "^", "left");
+            let right = interp.eval_local(db, "^", "right");
+            prim_pow(left, right, info)
+        })),
+        "&" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "&", "left");
+            let right = interp.eval_local(db, "&", "right");
+            prim_type_and(left, right, info)
+        })),
+        "|" => Some(Box::new(|interp, db, info| {
+            let left = interp.eval_local(db, "|", "left");
+            let right = interp.eval_local(db, "|", "right");
+            prim_type_or(left, right, info)
+        })),
+        ";" => Some(Box::new(|interp, db, _info| {
+            interp.eval_local(db, ";", "left");
+            let lambda = interp.eval_local(db, ";", "right");
+            interp.visit_prim(db, &mut (), &lambda)
+        })),
+        "argc" => Some(Box::new(|_interp, db, info| {
             Ok(I32(db.options().interpreter_args.len() as i32, info))
         })),
-        "argv" => Some(Box::new(|db, state, info| {
-            let i = get_local(state, "argv", "it");
+        "argv" => Some(Box::new(|interp, db, info| {
+            let i = interp.eval_local(db, "argv", "it");
             match i {
                 I32(ind, _) => Ok(Str(
                     db.options().interpreter_args[ind as usize].clone(),
@@ -160,13 +223,13 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
                 )),
             }
         })),
-        "I32" => Some(Box::new(|_db, _, info| Ok(TypeValue(i32_type(), info)))),
-        "Number" => Some(Box::new(|_db, _, info| Ok(TypeValue(number_type(), info)))),
-        "String" => Some(Box::new(|_db, _, info| Ok(TypeValue(string_type(), info)))),
-        "Bit" => Some(Box::new(|_db, _, info| Ok(TypeValue(bit_type(), info)))),
-        "Unit" => Some(Box::new(|_db, _, info| Ok(TypeValue(unit_type(), info)))),
-        "Void" => Some(Box::new(|_db, _, info| Ok(TypeValue(void_type(), info)))),
-        "Type" => Some(Box::new(|_db, _, info| Ok(TypeValue(type_type(), info)))),
+        "I32" => Some(Box::new(|_, _db, info| Ok(TypeValue(i32_type(), info)))),
+        "Number" => Some(Box::new(|_, _db, info| Ok(TypeValue(number_type(), info)))),
+        "String" => Some(Box::new(|_, _db, info| Ok(TypeValue(string_type(), info)))),
+        "Bit" => Some(Box::new(|_, _db, info| Ok(TypeValue(bit_type(), info)))),
+        "Unit" => Some(Box::new(|_, _db, info| Ok(TypeValue(unit_type(), info)))),
+        "Void" => Some(Box::new(|_, _db, info| Ok(TypeValue(void_type(), info)))),
+        "Type" => Some(Box::new(|_, _db, info| Ok(TypeValue(type_type(), info)))),
         _ => None,
     }
 }
@@ -179,12 +242,16 @@ pub enum Direction {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Semantic {
-    Operator { binding: i32, assoc: Direction },
+    Operator { binding: i32, assoc: Direction, laziness: bool},
     Func,
 }
 
 fn operator(binding: i32, assoc: Direction) -> Semantic {
-    Semantic::Operator { binding, assoc }
+    Semantic::Operator { binding, assoc, laziness: false }
+}
+
+fn lazy_operator(binding: i32, assoc: Direction) -> Semantic {
+    Semantic::Operator { binding, assoc, laziness: true }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -246,7 +313,7 @@ impl LangImpl {
     }
 }
 
-pub fn get_externs(db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError> {
+pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError> {
     use Direction::*;
     use Semantic::Func;
     let mut externs = vec![
@@ -314,7 +381,7 @@ pub fn get_externs(db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError>
         },
         Extern {
             name: ";".to_string(),
-            semantic: operator(20, Left),
+            semantic: lazy_operator(20, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
                 results: dict!("it" => variable("b")),
@@ -358,7 +425,7 @@ pub fn get_externs(db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError>
         },
         Extern {
             name: "?".to_string(),
-            semantic: operator(45, Left),
+            semantic: lazy_operator(45, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
                 results: dict!("it" => Union(set!(
@@ -373,7 +440,7 @@ pub fn get_externs(db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError>
         },
         Extern {
             name: "-|".to_string(),
-            semantic: operator(47, Left),
+            semantic: lazy_operator(47, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type")),
                 results: dict!("it" => variable("a")),
@@ -384,7 +451,7 @@ pub fn get_externs(db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError>
         },
         Extern {
             name: "|".to_string(),
-            semantic: operator(48, Left),
+            semantic: lazy_operator(48, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
                 results: dict!("it" => Union(set!(variable("a"), variable("b")))),
@@ -499,7 +566,7 @@ string to_string(const bool& t){
         },
         Extern {
             name: "||".to_string(),
-            semantic: operator(60, Left),
+            semantic: lazy_operator(60, Left),
             ty: Function {
                 intros: dict!(),
                 results: dict!("it" => bit_type()),
@@ -510,7 +577,7 @@ string to_string(const bool& t){
         },
         Extern {
             name: "&&".to_string(),
-            semantic: operator(60, Left),
+            semantic: lazy_operator(60, Left),
             ty: Function {
                 intros: dict!(),
                 results: dict!("it" => bit_type()),

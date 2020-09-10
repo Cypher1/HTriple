@@ -1,22 +1,23 @@
 use std::collections::HashMap;
-
 use super::ast::*;
 use super::database::Compiler;
 use super::errors::TError;
 use super::extern_impls::{Res, State, Frame};
 
 //Vec<&dyn Fn() -> Res>
-pub type ImplFn<'a> = &'a mut dyn FnMut(&dyn Compiler, &mut State, Info) -> Res;
+pub type ImplFn<'a> = &'a mut dyn FnMut(&mut Interpreter, &dyn Compiler, Info) -> Res;
 
 // Walks the AST interpreting it.
 pub struct Interpreter<'a> {
     pub impls: HashMap<String, ImplFn<'a>>,
+    pub state: State, // Actually is just the stack.
 }
 
 impl<'a> Default for Interpreter<'a> {
     fn default() -> Interpreter<'a> {
         Interpreter {
             impls: HashMap::new(),
+            state: vec![HashMap::new()],
         }
     }
 }
@@ -30,19 +31,55 @@ fn find_symbol<'a>(state: &'a [Frame], name: &str) -> Option<&'a Prim> {
     }
     None
 }
-// TODO: Return nodes.
-impl<'a> Visitor<State, Prim, Prim> for Interpreter<'a> {
-    fn visit_root(&mut self, db: &dyn Compiler, root: &Root) -> Res {
-        let mut state = vec![HashMap::new()];
-        self.visit(db, &mut state, &root.ast)
+
+
+impl<'a> Interpreter<'a> {
+    pub fn eval_local_maybe(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Option<Prim> {
+        if let Some(frame) = self.state.last() {
+            return match frame.get(name).cloned() {
+                None => None,
+                Some(Prim::Lambda(func)) => Some(self.visit(db, &mut (), &*func).expect("TODO handle this")),
+                val => val,
+            };
+        }
+        panic!("no frame for function {}", function_name)
     }
 
-    fn visit_sym(&mut self, db: &dyn Compiler, state: &mut State, expr: &Sym) -> Res {
+    pub fn eval_local(&mut self, db: &dyn Compiler, function_name: &str, name: &str) -> Prim {
+        if let Some(local) = self.eval_local_maybe(db, function_name, name) {
+            return local;
+        }
+        panic!("{} needs argument named {}", function_name, name)
+    }
+
+    pub fn get_local_maybe(&mut self, function_name: &str, name: &str) -> Option<Prim> {
+        if let Some(frame) = self.state.last() {
+            return frame.get(name).cloned();
+        }
+        panic!("no frame for function {}", function_name)
+    }
+
+    pub fn get_local(&mut self, function_name: &str, name: &str) -> Prim {
+        if let Some(local) = self.get_local_maybe(function_name, name) {
+            return local;
+        }
+        panic!("{} needs argument named {}", function_name, name)
+    }
+}
+
+
+// TODO: Return nodes.
+impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
+    fn visit_root(&mut self, db: &dyn Compiler, root: &Root) -> Res {
+        self.visit(db, &mut (), &root.ast)
+    }
+
+    fn visit_sym(&mut self, db: &dyn Compiler, _state: &mut (), expr: &Sym) -> Res {
         if db.debug() > 0 {
             eprintln!("evaluating let {}", expr.clone().to_node());
         }
         let name = &expr.name;
-        let value = find_symbol(&state, name);
+        let value = find_symbol(&self.state, name);
         if let Some(value) = value {
             if db.debug() > 0 {
                 eprintln!("from stack {}", value.clone().to_node());
@@ -52,55 +89,56 @@ impl<'a> Visitor<State, Prim, Prim> for Interpreter<'a> {
         if db.debug() > 2 {
             eprintln!("checking for interpreter impl {}", expr.name.clone());
         }
-        if let Some(extern_impl) = &mut self.impls.get_mut(name) {
-            return extern_impl(db, state, expr.get_info());
-        }
+        // if let Some(extern_impl) = &mut self.impls.get_mut(name) {
+            // return extern_impl(db, expr.get_info());
+        // }
         if db.debug() > 2 {
             eprintln!("checking for default impl {}", expr.name.clone());
         }
         if let Some(default_impl) = crate::externs::get_implementation(name.to_owned()) {
-            return default_impl(db, state, expr.get_info());
+            return default_impl(self, db, expr.get_info());
         }
         Err(TError::UnknownSymbol(name.to_string(), expr.info.clone()))
     }
 
-    fn visit_prim(&mut self, _db: &dyn Compiler, _state: &mut State, expr: &Prim) -> Res {
+    fn visit_prim(&mut self, _db: &dyn Compiler, _state: &mut (), expr: &Prim) -> Res {
+        eprintln!("lambda?: {}", expr.clone());
         Ok(expr.clone())
     }
 
-    fn visit_apply(&mut self, db: &dyn Compiler, state: &mut State, expr: &Apply) -> Res {
+    fn visit_apply(&mut self, db: &dyn Compiler, _state: &mut (), expr: &Apply) -> Res {
         if db.debug() > 0 {
             eprintln!("evaluating apply {}", expr.clone().to_node());
         }
-        state.push(Frame::new());
+        self.state.push(Frame::new());
         for arg in expr.args.iter() {
-            self.visit_let(db, state, arg)?;
+            self.visit_let(db, &mut (), arg)?;
         }
         // Visit the expr.inner
-        let res = self.visit(db, state, &*expr.inner)?;
-        state.pop();
+        let res = self.visit(db, &mut (), &*expr.inner)?;
+        self.state.pop();
         Ok(res)
     }
 
-    fn visit_let(&mut self, db: &dyn Compiler, state: &mut State, expr: &Let) -> Res {
+    fn visit_let(&mut self, db: &dyn Compiler, _state: &mut (), expr: &Let) -> Res {
         if db.debug() > 0 {
             eprintln!("evaluating let {}", expr.clone().to_node());
         }
 
         if expr.args.is_some() {
             // TODO double check
-            state
+            self.state
                 .last_mut()
                 .unwrap()
                 .insert(expr.name.clone(), Prim::Lambda(Box::new(expr.value.clone().to_node())));
             return Ok(Prim::Lambda(Box::new(expr.to_sym().to_node())));
         }
         // Add a new scope
-        state.push(Frame::new());
-        let result = self.visit(db, state, &expr.value)?;
+        self.state.push(Frame::new());
+        let result = self.visit(db, &mut (), &expr.value)?;
         // Drop the finished scope
-        state.pop();
-        match state.last_mut() {
+        self.state.pop();
+        match self.state.last_mut() {
             None => panic!("there is no stack frame"),
             Some(frame) => {
                 frame.insert(expr.name.clone(), result.clone());
@@ -109,7 +147,7 @@ impl<'a> Visitor<State, Prim, Prim> for Interpreter<'a> {
         }
     }
 
-    fn handle_error(&mut self, _db: &dyn Compiler, _state: &mut State, expr: &Err) -> Res {
+    fn handle_error(&mut self, _db: &dyn Compiler, _state: &mut (), expr: &Err) -> Res {
         Err(TError::FailedParse(expr.msg.to_string(), expr.get_info()))
     }
 }
@@ -120,7 +158,6 @@ mod tests {
     use super::super::cli_options::Options;
     use super::super::database::{Compiler, DB};
     use super::{Interpreter, Res};
-    use std::collections::HashMap;
     use Node::*;
     use Prim::*;
 
@@ -130,21 +167,23 @@ mod tests {
         db.set_options(Options::default());
         let tree = PrimNode(I32(12, Info::default()));
         assert_eq!(
-            Interpreter::default().visit(&db, &mut vec![], &tree),
+            Interpreter::default().visit(&db, &mut (), &tree),
             Ok(I32(12, Info::default()))
         );
     }
 
     fn eval_str(s: String) -> Res {
+        eprintln!("Evaluating: {}", s);
         use std::sync::Arc;
         let mut db = DB::default();
         let filename = "test.tk";
         let module = db.module_name(filename.to_owned());
         db.set_file(filename.to_owned(), Ok(Arc::new(s)));
-        db.set_options(Options::default());
+        let mut opts = Options::default();
+        opts.show_ast = true;
+        db.set_options(opts);
         let ast = db.parse_file(module)?;
-        let mut state = vec![HashMap::new()];
-        Interpreter::default().visit(&db, &mut state, &ast)
+        Interpreter::default().visit(&db, &mut (), &ast)
     }
 
     fn trace<T: std::fmt::Display, E>(t: Result<T, E>) -> Result<T, E> {
