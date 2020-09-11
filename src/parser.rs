@@ -226,6 +226,7 @@ fn led(
             TokenType::Op => {
                 let lbp = binding_power(db, &head.value)?;
                 let assoc = binding_dir(db, &head.value)?;
+                let lazy = binding_laziness(db, &head.value)?;
                 let (right, new_toks) = expr(
                     db,
                     toks,
@@ -236,7 +237,7 @@ fn led(
                 )?;
                 if head.value != "=" {
                     return Ok((
-                        bin_op(head.value.as_str(), left, right, head.get_info(), None),
+                        bin_op(head.value.as_str(), left, right, head.get_info(), lazy),
                         new_toks,
                     ));
                 }
