@@ -18,7 +18,7 @@ pub type FuncImpl = Box<dyn Fn(&mut Interpreter, &dyn Compiler, Info) -> Res>;
 pub fn get_implementation(name: String) -> Option<FuncImpl> {
     match name.as_str() {
         "print" => Some(Box::new(|interp, db, info| {
-            let val = interp.eval_local(db, "print", "it")?;
+            let val = interp.get_local("print", "it")?;
             match val {
                 Str(s, _) => print!("{}", s),
                 s => print!("{:?}", s),
@@ -26,7 +26,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             Ok(I32(0, info))
         })),
         "eprint" => Some(Box::new(|interp, db, info| {
-            let val = interp.eval_local(db, "eprint", "it")?;
+            let val = interp.get_local("eprint", "it")?;
             match val {
                 Str(s, _) => eprint!("{}", s),
                 s => eprint!("{:?}", s),
@@ -34,7 +34,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             Ok(I32(0, info))
         })),
         "exit" => Some(Box::new(|interp, db, _| {
-            let val = interp.eval_local(db, "exit", "it")?;
+            let val = interp.get_local("exit", "it")?;
             let code = match val {
                 I32(n, _) => n,
                 s => {
@@ -46,7 +46,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
         })),
         "!" => Some(Box::new(|interp, db, info| {
             // TODO require 1 arg
-            let i = interp.eval_local(db, "!", "it")?;
+            let i = interp.get_local("!", "it")?;
             match i {
                 Bool(n, _) => Ok(Bool(!n, info)),
                 _ => Err(TError::TypeMismatch("!".to_string(), Box::new(i), info)),
@@ -54,32 +54,32 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
         })),
         "+" => Some(Box::new(|interp, db, info| {
             // TODO require 1 arg
-            let i = interp.eval_local_maybe(db, "+", "it")?;
+            let i = interp.get_local_maybe("+", "it")?;
             match i {
                 // TODO require 1 arg
                 Some(I32(n, _)) => return Ok(I32(n, info)),
                 Some(i) => return Err(TError::TypeMismatch("+".to_string(), Box::new(i), info)),
                 _ => {}
             };
-            let left = interp.eval_local(db, "+", "left")?;
-            let right = interp.eval_local(db, "+", "right")?;
+            let left = interp.get_local("+", "left")?;
+            let right = interp.get_local("+", "right")?;
             prim_add(left, right, info)
         })),
         "-" => Some(Box::new(|interp, db, info| {
             // TODO require 1 arg
-            let i = interp.eval_local_maybe(db, "-", "it")?;
+            let i = interp.get_local_maybe("-", "it")?;
             match i {
                 // TODO require 1 arg
                 Some(I32(n, _)) => return Ok(I32(-n, info)),
                 Some(i) => return Err(TError::TypeMismatch("-".to_string(), Box::new(i), info)),
                 _ => {}
             };
-            let left = interp.eval_local(db, "-", "left")?;
-            let right = interp.eval_local(db, "-", "right")?;
+            let left = interp.get_local("-", "left")?;
+            let right = interp.get_local("-", "right")?;
             prim_sub(left, right, info)
         })),
         "||" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "||", "left")?;
+            let left = interp.get_local("||", "left")?;
             let right = interp.get_local("||", "right")?;
             match (left, right) {
                 (Bool(true, _), _) => Ok(Bool(true, info)),
@@ -94,7 +94,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             }
         })),
         "&&" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "&&", "left")?;
+            let left = interp.get_local("&&", "left")?;
             let right = interp.get_local("&&", "right")?;
             match (left, right) {
                 (Bool(false, _), _) => Ok(Bool(false, info)),
@@ -109,73 +109,73 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             }
         })),
         "++" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "++", "left")?;
-            let right = interp.eval_local(db, "++", "right")?;
+            let left = interp.get_local("++", "left")?;
+            let right = interp.get_local("++", "right")?;
             prim_add_strs(left, right, info)
         })),
         "==" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "==", "left")?;
-            let right = interp.eval_local(db, "==", "right")?;
+            let left = interp.get_local("==", "left")?;
+            let right = interp.get_local("==", "right")?;
             prim_eq(left, right, info)
         })),
         "!=" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "!=", "left")?;
-            let right = interp.eval_local(db, "!=", "right")?;
+            let left = interp.get_local("!=", "left")?;
+            let right = interp.get_local("!=", "right")?;
             prim_neq(left, right, info)
         })),
         ">" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, ">", "left")?;
-            let right = interp.eval_local(db, ">", "right")?;
+            let left = interp.get_local(">", "left")?;
+            let right = interp.get_local(">", "right")?;
             prim_gt(left, right, info)
         })),
         "<" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "<", "left")?;
-            let right = interp.eval_local(db, "<", "right")?;
+            let left = interp.get_local("<", "left")?;
+            let right = interp.get_local("<", "right")?;
             prim_gt(right, left, info)
         })),
         ">=" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, ">=", "left")?;
-            let right = interp.eval_local(db, ">=", "right")?;
+            let left = interp.get_local(">=", "left")?;
+            let right = interp.get_local(">=", "right")?;
             prim_gte(left, right, info)
         })),
         "<=" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "<=", "left")?;
-            let right = interp.eval_local(db, "<=", "right")?;
+            let left = interp.get_local("<=", "left")?;
+            let right = interp.get_local("<=", "right")?;
             prim_gte(right, left, info)
         })),
         "*" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "*", "left")?;
-            let right = interp.eval_local(db, "*", "right")?;
+            let left = interp.get_local("*", "left")?;
+            let right = interp.get_local("*", "right")?;
             prim_mul(left, right, info)
         })),
         "/" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "/", "left")?;
-            let right = interp.eval_local(db, "/", "right")?;
+            let left = interp.get_local("/", "left")?;
+            let right = interp.get_local("/", "right")?;
             prim_div(left, right, info)
         })),
         "%" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "%", "left")?;
-            let right = interp.eval_local(db, "%", "right")?;
+            let left = interp.get_local("%", "left")?;
+            let right = interp.get_local("%", "right")?;
             prim_mod(left, right, info)
         })),
         "^" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "^", "left")?;
-            let right = interp.eval_local(db, "^", "right")?;
+            let left = interp.get_local("^", "left")?;
+            let right = interp.get_local("^", "right")?;
             prim_pow(left, right, info)
         })),
         "&" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "&", "left")?;
-            let right = interp.eval_local(db, "&", "right")?;
+            let left = interp.get_local("&", "left")?;
+            let right = interp.get_local("&", "right")?;
             prim_type_and(left, right, info)
         })),
         "|" => Some(Box::new(|interp, db, info| {
-            let left = interp.eval_local(db, "|", "left")?;
-            let right = interp.eval_local(db, "|", "right")?;
+            let left = interp.get_local("|", "left")?;
+            let right = interp.get_local("|", "right")?;
             prim_type_or(left, right, info)
         })),
         ":" => Some(Box::new(|interp, db, info| {
-            let value = interp.eval_local(db, "|", "left")?;
-            let ty = interp.eval_local(db, "|", "right")?;
+            let value = interp.get_local("|", "left")?;
+            let ty = interp.get_local("|", "right")?;
             use crate::ast::ToNode;
             let _type_of_value = infer(db, &value.clone().to_node());
             // Check subtyping relationship of type_of_value and ty.
@@ -191,30 +191,45 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             ))
         })),
         "?" => Some(Box::new(|interp, db, info| {
-            match interp.eval_local(db, "|", "left") {
+            match interp.get_local("|", "left") {
                 Ok(succ) => Ok(succ),
-                Err(_) => interp.eval_local(db, "|", "right"),
+                Err(_) => interp.get_local("|", "right"),
             }
         })),
         "-|" => Some(Box::new(|interp, db, info| {
-            match interp.eval_local(db, "-|", "left") {
+            match interp.get_local("-|", "left") {
                 //TODO: Add pattern matching.
                 Ok(Bool(false, info)) => Err(TError::RequirementFailure(info)),
                 // Lambda(expr)) => Ok(Lambda(Box::new(expr.clone().to_node()))), // TODO: Worth double checking. Smells
-                Ok(_) => interp.eval_local(db, "-|", "right"),
+                Ok(_) => interp.get_local("-|", "right"),
                 err => err,
             }
         })),
-        ";" => Some(Box::new(|interp, db, _info| {
-            interp.eval_local(db, ";", "left")?;
-            let lambda = interp.eval_local(db, ";", "right")?;
-            interp.visit_prim(db, &mut (), &lambda)
+        ";" => Some(Box::new(|interp, db, info| {
+            let lambda = interp.get_local(";", "left")?;
+            match lambda {
+                Lambda(n) => {interp.visit(db, &mut (), &n)?},
+                value => return Err(TError::TypeMismatch(
+                    "Expected continuation to be a lambda".to_string(),
+                    Box::new(value),
+                    info,
+                )),
+            };
+            let lambda = interp.get_local(";", "right")?;
+            match lambda {
+                Lambda(n) => interp.visit(db, &mut (), &n),
+                value => Err(TError::TypeMismatch(
+                    "Expected continuation to be a lambda".to_string(),
+                    Box::new(value),
+                    info,
+                )),
+            }
         })),
         "argc" => Some(Box::new(|_interp, db, info| {
             Ok(I32(db.options().interpreter_args.len() as i32, info))
         })),
         "argv" => Some(Box::new(|interp, db, info| {
-            let i = interp.eval_local(db, "argv", "it")?;
+            let i = interp.get_local("argv", "it")?;
             match i {
                 I32(ind, _) => Ok(Str(
                     db.options().interpreter_args[ind as usize].clone(),
@@ -249,7 +264,7 @@ pub enum Semantic {
     Operator {
         binding: i32,
         assoc: Direction,
-        laziness: Option<Direction>,
+        laziness: Option<(bool, bool)>,
     },
     Func,
 }
@@ -262,11 +277,11 @@ fn operator(binding: i32, assoc: Direction) -> Semantic {
     }
 }
 
-fn lazy_operator(binding: i32, assoc: Direction, laziness: Direction) -> Semantic {
+fn lazy_operator(binding: i32, assoc: Direction, lazy_left: bool, lazy_right: bool) -> Semantic {
     Semantic::Operator {
         binding,
         assoc,
-        laziness: Some(laziness),
+        laziness: Some((lazy_left, lazy_right)),
     }
 }
 
@@ -397,7 +412,7 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
         },
         Extern {
             name: ";".to_string(),
-            semantic: operator(20, Left),
+            semantic: lazy_operator(20, Left, true, true),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
                 results: dict!("it" => variable("b")),
@@ -582,7 +597,7 @@ string to_string(const bool& t){
         },
         Extern {
             name: "||".to_string(),
-            semantic: lazy_operator(60, Left, Right),
+            semantic: lazy_operator(60, Left, false, true),
             ty: Function {
                 intros: dict!(),
                 results: dict!("it" => bit_type()),
@@ -593,7 +608,7 @@ string to_string(const bool& t){
         },
         Extern {
             name: "&&".to_string(),
-            semantic: lazy_operator(60, Left, Right),
+            semantic: lazy_operator(60, Left, false, true),
             ty: Function {
                 intros: dict!(),
                 results: dict!("it" => bit_type()),

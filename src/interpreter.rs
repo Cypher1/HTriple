@@ -33,34 +33,6 @@ fn find_symbol<'a>(state: &'a [Frame], name: &str) -> Option<&'a Prim> {
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn eval_local_maybe(
-        &mut self,
-        db: &dyn Compiler,
-        function_name: &str,
-        name: &str,
-    ) -> Result<Option<Prim>, TError> {
-        if let Some(frame) = self.state.last() {
-            return Ok(match frame.get(name).cloned() {
-                None => None,
-                Some(Prim::Lambda(func)) => Some(self.visit(db, &mut (), &*func)?),
-                val => val,
-            });
-        }
-        panic!("no frame for function {}", function_name)
-    }
-
-    pub fn eval_local(
-        &mut self,
-        db: &dyn Compiler,
-        function_name: &str,
-        name: &str,
-    ) -> Result<Prim, TError> {
-        if let Some(local) = self.eval_local_maybe(db, function_name, name)? {
-            return Ok(local);
-        }
-        panic!("{} needs argument named {}", function_name, name)
-    }
-
     pub fn get_local_maybe(
         &mut self,
         function_name: &str,

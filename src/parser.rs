@@ -26,7 +26,7 @@ fn binding_power(db: &dyn Compiler, tok: &str) -> Result<i32, TError> {
     })
 }
 
-fn binding_laziness(db: &dyn Compiler, tok: &str) -> Result<Option<Direction>, TError> {
+fn binding_laziness(db: &dyn Compiler, tok: &str) -> Result<Option<(bool, bool)>, TError> {
     Ok(match binding(db, tok)? {
         Semantic::Operator { laziness, .. } => laziness,
         Semantic::Func => None,
@@ -423,14 +423,14 @@ pub fn parse(db: &dyn Compiler, module: &Path) -> Result<Node, TError> {
     Ok(root)
 }
 
-fn bin_op(name: &str, left: Node, right: Node, info: Info, lazy: Option<Direction>) -> Node {
-    let left = if lazy == Some(Direction::Left) {
+fn bin_op(name: &str, left: Node, right: Node, info: Info, lazy: Option<(bool, bool)>) -> Node {
+    let left = if let Some((true, _)) = lazy {
         Prim::Lambda(Box::new(left)).to_node()
     } else {
         left
     };
 
-    let right = if lazy == Some(Direction::Right) {
+    let right = if let Some((_, true)) = lazy {
         Prim::Lambda(Box::new(right)).to_node()
     } else {
         right
