@@ -53,7 +53,7 @@ fn get_defs(root: Node) -> Vec<Let> {
             }) == *inner
             {
                 for arg in args {
-                    all_args.append(&mut get_defs(arg.to_node()));
+                    all_args.append(&mut get_defs(arg.value.to_node()));
                 }
             } else {
                 all_args.push(Let {

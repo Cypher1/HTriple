@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::ast::Visitor;
 use super::extern_impls::*;
 use super::interpreter::Interpreter;
-use crate::ast::{Info, Prim::*};
+use crate::ast::{Info, Prim::*, ToNode};
 use crate::database::Compiler;
 use crate::errors::TError;
 use crate::types::{
@@ -78,17 +78,26 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             let right = interp.get_local("-", "right")?;
             prim_sub(left, right, info)
         })),
+        "&&" => Some(Box::new(|interp, db, info| {
+            let left = interp.get_local("&&", "left")?;
+            match left {
+                Bool(false, _) => Ok(Bool(false, info)),
+                Bool(true, _) => interp.eval_local(db, "&&", "right"),
+                l => Err(TError::TypeMismatch(
+                    "&&".to_string(),
+                    Box::new(l),
+                    info,
+                )),
+            }
+        })),
         "||" => Some(Box::new(|interp, db, info| {
             let left = interp.get_local("||", "left")?;
-            let right = interp.get_local("||", "right")?;
-            match (left, right) {
-                (Bool(true, _), _) => Ok(Bool(true, info)),
-                (Bool(false, _), Bool(r, _)) => Ok(Bool(r, info)),
-                (Bool(false, _), Lambda(r)) => interp.visit(db, &mut (), &r),
-                (l, r) => Err(TError::TypeMismatch2(
+            match left {
+                Bool(true, _) => Ok(Bool(true, info)),
+                Bool(false, _) => interp.eval_local(db, "||", "right"),
+                l => Err(TError::TypeMismatch(
                     "||".to_string(),
                     Box::new(l),
-                    Box::new(r),
                     info,
                 )),
             }
@@ -176,7 +185,6 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
         ":" => Some(Box::new(|interp, db, info| {
             let value = interp.get_local("|", "left")?;
             let ty = interp.get_local("|", "right")?;
-            use crate::ast::ToNode;
             let _type_of_value = infer(db, &value.clone().to_node());
             // Check subtyping relationship of type_of_value and ty.
             let sub_type = true;
@@ -206,24 +214,8 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             }
         })),
         ";" => Some(Box::new(|interp, db, info| {
-            let lambda = interp.get_local(";", "left")?;
-            match lambda {
-                Lambda(n) => {interp.visit(db, &mut (), &n)?},
-                value => return Err(TError::TypeMismatch(
-                    "Expected continuation to be a lambda".to_string(),
-                    Box::new(value),
-                    info,
-                )),
-            };
-            let lambda = interp.get_local(";", "right")?;
-            match lambda {
-                Lambda(n) => interp.visit(db, &mut (), &n),
-                value => Err(TError::TypeMismatch(
-                    "Expected continuation to be a lambda".to_string(),
-                    Box::new(value),
-                    info,
-                )),
-            }
+            interp.eval_local(db, ";", "left")?;
+            interp.eval_local(db, ";", "right")
         })),
         "argc" => Some(Box::new(|_interp, db, info| {
             Ok(I32(db.options().interpreter_args.len() as i32, info))
@@ -599,9 +591,9 @@ string to_string(const bool& t){
             name: "||".to_string(),
             semantic: lazy_operator(60, Left, false, true),
             ty: Function {
-                intros: dict!(),
+                intros: dict!("a" => variable("Type")),
                 results: dict!("it" => bit_type()),
-                arguments: dict!("left" => bit_type(), "right" => bit_type()),
+                arguments: dict!("left" => bit_type(), "right" => variable("a")),
                 effects: vec![],
             },
             cpp: LangImpl::operator("||"),
