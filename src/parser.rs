@@ -612,7 +612,7 @@ pub mod tests {
                 str_lit("hello world"),
                 num_lit(7),
                 Info::default(),
-                None
+                Some((true, true))
             )
         );
     }
@@ -632,7 +632,7 @@ pub mod tests {
                 .to_node(),
                 num_lit(7),
                 Info::default(),
-                None
+                Some((true, true))
             )
         );
     }
