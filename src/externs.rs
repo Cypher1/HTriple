@@ -208,8 +208,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             match interp.get_local("-|", "left") {
                 //TODO: Add pattern matching.
                 Ok(Bool(false, info)) => Err(TError::RequirementFailure(info)),
-                // Lambda(expr)) => Ok(Lambda(Box::new(expr.clone().to_node()))), // TODO: Worth double checking. Smells
-                Ok(_) => interp.get_local("-|", "right"),
+                Ok(_) => interp.eval_local(db, "-|", "right"),
                 err => err,
             }
         })),
@@ -463,7 +462,7 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
         },
         Extern {
             name: "-|".to_string(),
-            semantic: operator(47, Left),
+            semantic: lazy_operator(47, Left, false, true),
             ty: Function {
                 intros: dict!("a" => variable("Type")),
                 results: dict!("it" => variable("a")),
