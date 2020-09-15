@@ -126,12 +126,14 @@ impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
             eprintln!("evaluating apply {}", expr.clone().to_node());
         }
         self.state.push(Frame::new());
+        eprintln!("apply frame {}", expr.clone().to_node());
         for arg in expr.args.iter() {
             self.visit_let(db, &mut (), arg)?;
         }
         // Visit the expr.inner
         let res = self.visit(db, &mut (), &*expr.inner)?;
-        self.state.pop();
+        let dropped = self.state.pop().unwrap_or_default();
+        eprintln!("dropping apply frame {:?}", dropped.keys());
         Ok(res)
     }
 
@@ -151,9 +153,11 @@ impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
         }
         // Add a new scope
         self.state.push(Frame::new());
+        eprintln!("let frame {}", expr.clone().to_node());
         let result = self.visit(db, &mut (), &expr.value)?;
         // Drop the finished scope
-        self.state.pop();
+        let dropped = self.state.pop().unwrap_or_default();
+        eprintln!("dropping let frame {:?}", dropped.keys());
         match self.state.last_mut() {
             None => panic!("there is no stack frame"),
             Some(frame) => {
