@@ -26,8 +26,8 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
     let mut db = DB::default();
     db.set_options(options);
 
-    use std::cell::{RefCell, RefMut};
-    let mut stdout: RefCell<Vec<String>> = RefCell::new(vec![]);
+    use std::cell::RefCell;
+    let stdout: RefCell<Vec<String>> = RefCell::new(vec![]);
     let result = {
         use takolib::ast::{Prim::{I32, Str}, Info};
         use takolib::extern_impls::Res;
