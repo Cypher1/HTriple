@@ -196,8 +196,8 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
                 err => err,
             }
         })),
-        ";" => Some(Box::new(|interp, db, info| {
-            interp.get_local(";", "left")?;
+        ";" => Some(Box::new(|interp, db, _info| {
+            interp.eval_local(db, ";", "left")?;
             interp.eval_local(db, ";", "right")
         })),
         "argc" => Some(Box::new(|_interp, db, info| {
@@ -387,7 +387,7 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
         },
         Extern {
             name: ";".to_string(),
-            semantic: lazy_operator(20, Left, false, true),
+            semantic: lazy_operator(20, Left, true, true),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
                 results: dict!("it" => variable("b")),
