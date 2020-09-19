@@ -5,7 +5,7 @@ use super::extern_impls::{Frame, Res, State};
 use std::collections::HashMap;
 
 //Vec<&dyn Fn() -> Res>
-pub type ImplFn<'a> = &'a mut dyn FnMut(&mut Interpreter, &dyn Compiler, Info) -> Res;
+pub type ImplFn<'a> = &'a dyn Fn(&mut Interpreter, &dyn Compiler, Info) -> Res;
 
 // Walks the AST interpreting it.
 pub struct Interpreter<'a> {
@@ -104,9 +104,10 @@ impl<'a> Visitor<(), Prim, Prim> for Interpreter<'a> {
         if db.debug() > 2 {
             eprintln!("checking for interpreter impl {}", expr.name.clone());
         }
-        // if let Some(extern_impl) = &mut self.impls.get_mut(name) {
-        // return extern_impl(db, expr.get_info());
-        // }
+        // This is inefficient and probably not the right approach but it bypasses the borrow checker.
+        if let Some(extern_impl) = self.impls.clone().get(name) {
+            return extern_impl(self, db, expr.get_info());
+        }
         if db.debug() > 2 {
             eprintln!("checking for default impl {}", expr.name.clone());
         }

@@ -26,12 +26,13 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
     let mut db = DB::default();
     db.set_options(options);
 
-    let mut stdout: Vec<String> = vec![];
+    use std::cell::{RefCell, RefMut};
+    let mut stdout: RefCell<Vec<String>> = RefCell::new(vec![]);
     let result = {
         use takolib::ast::{Prim::{I32, Str}, Info};
         use takolib::extern_impls::Res;
-        let mut print_impl = &mut |interp: &mut Interpreter, _: &dyn Compiler, _: takolib::ast::Info| -> Res {
-            stdout.push(match interp.get_local("print_for_golden", "it")? {
+        let mut print_impl = |interp: &mut Interpreter, _: &dyn Compiler, _: takolib::ast::Info| -> Res {
+            stdout.borrow_mut().push(match interp.get_local("print_for_golden", "it")? {
                 Str(s,_)=>s,
                 s=>format!("{:?}", s)
             });
@@ -50,7 +51,7 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
         },
         (Ok(result), Output(s)) => {
             assert_eq!(
-                format!("{}{}", stdout.join(""), result),
+                format!("{}{}", stdout.borrow().join(""), result),
                 s
             );
             eprintln!("Success. Result:\n{:?}", result);
@@ -60,7 +61,7 @@ fn test_with_expectation(expected: TestResult, options: Vec<&str>) {
             let read = read_to_string(&gold);
             let golden = read.unwrap_or_else(|_| panic!("golden file {} could not be read", gold)).replace("\r", "");
             assert_eq!(
-                format!("{}{}", stdout.join(""), result),
+                format!("{}{}", stdout.borrow().join(""), result),
                 golden
             );
             eprintln!("Success. Result:\n{:?}", result);

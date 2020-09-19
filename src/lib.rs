@@ -38,7 +38,7 @@ use interpreter::ImplFn;
 pub fn work<'a>(
     db: &mut DB,
     filename: &str,
-    print_impl: Option<ImplFn<'a>>,
+    print_impl: Option<ImplFn>,
 ) -> Result<String, TError> {
     let mut contents = String::new();
     let mut file = File::open(filename.to_owned())
