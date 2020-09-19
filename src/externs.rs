@@ -182,14 +182,14 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
                 ty.get_info(),
             ))
         })),
-        "?" => Some(Box::new(|interp, _db, _info| {
-            match interp.get_local("|", "left") {
+        "?" => Some(Box::new(|interp, db, _info| {
+            match interp.eval_local(db, "?", "left") {
                 Ok(succ) => Ok(succ),
-                Err(_) => interp.get_local("|", "right"),
+                Err(_) => interp.eval_local(db, "?", "right"),
             }
         })),
         "-|" => Some(Box::new(|interp, db, _info| {
-            match interp.get_local("-|", "left") {
+            match interp.eval_local(db, "-|", "left") {
                 //TODO: Add pattern matching.
                 Ok(Bool(false, info)) => Err(TError::RequirementFailure(info)),
                 Ok(_) => interp.eval_local(db, "-|", "right"),
@@ -431,7 +431,7 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
         },
         Extern {
             name: "?".to_string(),
-            semantic: operator(45, Left),
+            semantic: lazy_operator(45, Left, true, true),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
                 results: dict!("it" => Union(set!(
@@ -446,7 +446,7 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
         },
         Extern {
             name: "-|".to_string(),
-            semantic: lazy_operator(47, Left, false, true),
+            semantic: lazy_operator(47, Left, true, true),
             ty: Function {
                 intros: dict!("a" => variable("Type")),
                 results: dict!("it" => variable("a")),
