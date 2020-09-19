@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use super::ast::Visitor;
 use super::extern_impls::*;
 use super::interpreter::Interpreter;
 use crate::ast::{Info, Prim::*, ToNode};
@@ -17,7 +16,7 @@ pub type FuncImpl = Box<dyn Fn(&mut Interpreter, &dyn Compiler, Info) -> Res>;
 
 pub fn get_implementation(name: String) -> Option<FuncImpl> {
     match name.as_str() {
-        "print" => Some(Box::new(|interp, db, info| {
+        "print" => Some(Box::new(|interp, _db, info| {
             let val = interp.get_local("print", "it")?;
             match val {
                 Str(s, _) => print!("{}", s),
@@ -25,7 +24,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             };
             Ok(I32(0, info))
         })),
-        "eprint" => Some(Box::new(|interp, db, info| {
+        "eprint" => Some(Box::new(|interp, _db, info| {
             let val = interp.get_local("eprint", "it")?;
             match val {
                 Str(s, _) => eprint!("{}", s),
@@ -33,7 +32,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             };
             Ok(I32(0, info))
         })),
-        "exit" => Some(Box::new(|interp, db, _| {
+        "exit" => Some(Box::new(|interp, _db, _info| {
             let val = interp.get_local("exit", "it")?;
             let code = match val {
                 I32(n, _) => n,
@@ -44,7 +43,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             };
             std::process::exit(code);
         })),
-        "!" => Some(Box::new(|interp, db, info| {
+        "!" => Some(Box::new(|interp, _db, info| {
             // TODO require 1 arg
             let i = interp.get_local("!", "it")?;
             match i {
@@ -52,7 +51,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
                 _ => Err(TError::TypeMismatch("!".to_string(), Box::new(i), info)),
             }
         })),
-        "+" => Some(Box::new(|interp, db, info| {
+        "+" => Some(Box::new(|interp, _db, info| {
             // TODO require 1 arg
             let i = interp.get_local_maybe("+", "it")?;
             match i {
@@ -65,7 +64,7 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             let right = interp.get_local("+", "right")?;
             prim_add(left, right, info)
         })),
-        "-" => Some(Box::new(|interp, db, info| {
+        "-" => Some(Box::new(|interp, _db, info| {
             // TODO require 1 arg
             let i = interp.get_local_maybe("-", "it")?;
             match i {
@@ -102,87 +101,72 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
                 )),
             }
         })),
-        "&&" => Some(Box::new(|interp, db, info| {
-            let left = interp.get_local("&&", "left")?;
-            let right = interp.get_local("&&", "right")?;
-            match (left, right) {
-                (Bool(false, _), _) => Ok(Bool(false, info)),
-                (Bool(true, _), Bool(r, _)) => Ok(Bool(r, info)),
-                (Bool(true, _), Lambda(r)) => interp.visit(db, &mut (), &r),
-                (l, r) => Err(TError::TypeMismatch2(
-                    "&&".to_string(),
-                    Box::new(l),
-                    Box::new(r),
-                    info,
-                )),
-            }
-        })),
-        "++" => Some(Box::new(|interp, db, info| {
+        "++" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("++", "left")?;
             let right = interp.get_local("++", "right")?;
             prim_add_strs(left, right, info)
         })),
-        "==" => Some(Box::new(|interp, db, info| {
+        "==" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("==", "left")?;
             let right = interp.get_local("==", "right")?;
             prim_eq(left, right, info)
         })),
-        "!=" => Some(Box::new(|interp, db, info| {
+        "!=" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("!=", "left")?;
             let right = interp.get_local("!=", "right")?;
             prim_neq(left, right, info)
         })),
-        ">" => Some(Box::new(|interp, db, info| {
+        ">" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local(">", "left")?;
             let right = interp.get_local(">", "right")?;
             prim_gt(left, right, info)
         })),
-        "<" => Some(Box::new(|interp, db, info| {
+        "<" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("<", "left")?;
             let right = interp.get_local("<", "right")?;
             prim_gt(right, left, info)
         })),
-        ">=" => Some(Box::new(|interp, db, info| {
+        ">=" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local(">=", "left")?;
             let right = interp.get_local(">=", "right")?;
             prim_gte(left, right, info)
         })),
-        "<=" => Some(Box::new(|interp, db, info| {
+        "<=" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("<=", "left")?;
             let right = interp.get_local("<=", "right")?;
             prim_gte(right, left, info)
         })),
-        "*" => Some(Box::new(|interp, db, info| {
+        "*" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("*", "left")?;
             let right = interp.get_local("*", "right")?;
             prim_mul(left, right, info)
         })),
-        "/" => Some(Box::new(|interp, db, info| {
+        "/" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("/", "left")?;
             let right = interp.get_local("/", "right")?;
             prim_div(left, right, info)
         })),
-        "%" => Some(Box::new(|interp, db, info| {
+        "%" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("%", "left")?;
             let right = interp.get_local("%", "right")?;
             prim_mod(left, right, info)
         })),
-        "^" => Some(Box::new(|interp, db, info| {
+        "^" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("^", "left")?;
             let right = interp.get_local("^", "right")?;
             prim_pow(left, right, info)
         })),
-        "&" => Some(Box::new(|interp, db, info| {
+        "&" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("&", "left")?;
             let right = interp.get_local("&", "right")?;
             prim_type_and(left, right, info)
         })),
-        "|" => Some(Box::new(|interp, db, info| {
+        "|" => Some(Box::new(|interp, _db, info| {
             let left = interp.get_local("|", "left")?;
             let right = interp.get_local("|", "right")?;
             prim_type_or(left, right, info)
         })),
-        ":" => Some(Box::new(|interp, db, info| {
+        ":" => Some(Box::new(|interp, db, _info| {
             let value = interp.get_local("|", "left")?;
             let ty = interp.get_local("|", "right")?;
             let _type_of_value = infer(db, &value.clone().to_node());
@@ -198,13 +182,13 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
                 ty.get_info(),
             ))
         })),
-        "?" => Some(Box::new(|interp, db, info| {
+        "?" => Some(Box::new(|interp, _db, _info| {
             match interp.get_local("|", "left") {
                 Ok(succ) => Ok(succ),
                 Err(_) => interp.get_local("|", "right"),
             }
         })),
-        "-|" => Some(Box::new(|interp, db, info| {
+        "-|" => Some(Box::new(|interp, db, _info| {
             match interp.get_local("-|", "left") {
                 //TODO: Add pattern matching.
                 Ok(Bool(false, info)) => Err(TError::RequirementFailure(info)),
