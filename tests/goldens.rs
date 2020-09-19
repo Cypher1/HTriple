@@ -79,7 +79,7 @@ fn compile_with_success(file: &str) {
 }
 
 fn interpret_with_success(file: &str) {
-    test_with_expectation(Success, vec!["--run", "-d", "-d", file]);
+    test_with_expectation(Success, vec!["--run", file]);
 }
 
 fn interpret_with_error(file: &str) {

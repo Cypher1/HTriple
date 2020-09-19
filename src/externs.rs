@@ -387,7 +387,7 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
         },
         Extern {
             name: ";".to_string(),
-            semantic: lazy_operator(20, Left, true, true),
+            semantic: lazy_operator(20, Right, true, true),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
                 results: dict!("it" => variable("b")),
