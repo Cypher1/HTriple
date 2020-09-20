@@ -403,7 +403,7 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
         let uses = db
             .find_symbol_uses(context.clone(), path.clone())?
             .unwrap_or_else(|| panic!("couldn't find {:?} {:?}", context.clone(), path.clone()));
-        if uses.is_empty() {
+        if true /*uses.is_empty()*/ {
             eprintln!("culling let: {:?}", expr.get_info().defined_at);
             return Ok(Code::Empty);
         }
