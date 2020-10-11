@@ -20,10 +20,10 @@ impl Visitor<State, (), String, Node> for PrettyPrint {
 
     fn visit_sym(&mut self, _db: &dyn Compiler, state: &mut State, expr: &Sym) -> Res {
         // if let Some(def_at) = expr.get_info().defined_at {
-            // let path: Vec<String> = def_at.iter().map(|p| format!("{}", p)).collect();
-            // write!(state, "::{}", path.join("::")).unwrap();
+        // let path: Vec<String> = def_at.iter().map(|p| format!("{}", p)).collect();
+        // write!(state, "::{}", path.join("::")).unwrap();
         // } else {
-            write!(state, "{}", expr.name).unwrap();
+        write!(state, "{}", expr.name).unwrap();
         // }
         Ok(())
     }
@@ -57,6 +57,43 @@ impl Visitor<State, (), String, Node> for PrettyPrint {
     }
 
     fn visit_apply(&mut self, db: &dyn Compiler, state: &mut State, expr: &Apply) -> Res {
+        // Check if the inner is an operator
+        use crate::ast::Node::SymNode;
+        match &*expr.inner {
+            SymNode(Sym { name, .. }) => {
+                if let Some(extern_info) = db.get_extern(name.to_owned())? {
+                    // the inner is an operator so, print infix.
+                    use crate::externs::Semantic::Func;
+                    if extern_info.semantic != Func {
+                        if expr.args.len() == 2 {
+                            let first = &expr.args[0];
+                            let second = &expr.args[1];
+                            let (left, right) = if first.name == "left" && second.name == "right" {
+                                (first, second)
+                            } else {
+                                // else if (first.name == "right" && second.name == "left") {
+                                (second, first)
+                            };
+                            // TODO: Compare bindings to eliminate parens.
+                            write!(state, "(").unwrap();
+                            self.visit(db, state, &left.value.unwrap_lambda())?;
+                            self.visit(db, state, &*expr.inner)?;
+                            self.visit(db, state, &right.value.unwrap_lambda())?;
+                            write!(state, ")").unwrap();
+                            return Ok(());
+                        } else if expr.args.len() == 1 {
+                            let inner = &expr.args[0];
+                            write!(state, "(").unwrap();
+                            self.visit(db, state, &*expr.inner)?;
+                            self.visit(db, state, &inner.value)?;
+                            write!(state, ")").unwrap();
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
         self.visit(db, state, &*expr.inner)?;
         // TODO: detect when our inner is an operator and pretty print appropriately.
         write!(state, "(").unwrap();
@@ -74,10 +111,10 @@ impl Visitor<State, (), String, Node> for PrettyPrint {
 
     fn visit_let(&mut self, db: &dyn Compiler, state: &mut State, expr: &Let) -> Res {
         // if let Some(def_at) = expr.get_info().defined_at {
-            // let path: Vec<String> = def_at.iter().map(|p| format!("{}", p)).collect();
-            // write!(state, "::{}", path.join("::")).unwrap();
+        // let path: Vec<String> = def_at.iter().map(|p| format!("{}", p)).collect();
+        // write!(state, "::{}", path.join("::")).unwrap();
         // } else {
-            write!(state, "{}", expr.name).unwrap();
+        write!(state, "{}", expr.name).unwrap();
         // }
         match &expr.args {
             Some(reqs) => {

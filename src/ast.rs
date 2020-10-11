@@ -27,7 +27,7 @@ impl ToNode for Err {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Apply {
     pub inner: Box<Node>,
-    pub args: Vec<Let>,
+    pub args: Vec<Let>, // TODO: A hashmap, set (or multiset?)
     pub info: Info,
 }
 
@@ -166,6 +166,15 @@ pub enum Node {
     PrimNode(Prim),
     ApplyNode(Apply),
     LetNode(Let),
+}
+
+impl Node {
+    pub fn unwrap_lambda(&self) -> Node {
+        match self {
+            Node::PrimNode(Prim::Lambda(ast)) => *ast.clone(),
+            other => other.clone()
+        }
+    }
 }
 
 impl std::fmt::Debug for Node {

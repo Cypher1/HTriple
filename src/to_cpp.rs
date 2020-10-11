@@ -231,6 +231,13 @@ impl Visitor<State, Code, Out, Path> for CodeGenerator {
                 lambda: false,
                 return_type: "int".to_string(),
             },
+            Code::Empty => Code::Func {
+                name: "main".to_string(),
+                args: vec!["int argc".to_string(), "char* argv[]".to_string()],
+                body: Box::new(Code::Statement("return 0".to_string())),
+                lambda: false,
+                return_type: "int".to_string(),
+            },
             thing => panic!("main must be a Func {:?}", thing),
         };
         // TODO(cypher1): Use a writer.
