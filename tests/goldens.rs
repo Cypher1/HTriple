@@ -216,6 +216,22 @@ fn compile_higher_order() {
 }
 
 #[test]
+fn struct_access() {
+    test_with_expectation(
+        OutputFile("goldens/examples_struct_access.cc".to_string()),
+        vec!["--run", "examples/struct_access.tk"],
+    );
+}
+
+#[test]
+fn compile_struct_access() {
+    test_with_expectation(
+        OutputFile("goldens/examples_struct_access.cc".to_string()),
+        vec!["examples/struct_access.tk"],
+    );
+}
+
+#[test]
 fn compile_ignored_let() {
     test_with_expectation(
         OutputFile("goldens/examples_ignored_let.cc".to_string()),

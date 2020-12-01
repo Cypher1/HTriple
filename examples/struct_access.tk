@@ -1,0 +1,5 @@
+ob=struct(x=3, y=5)
+
+print("ob="++ob)
+print("x="++ob.x++", y="++ob.y++"\n")
+0
