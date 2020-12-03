@@ -40,6 +40,14 @@ pub fn get_implementation(name: String) -> Option<FuncImpl> {
             };
             std::process::exit(code);
         })),
+        "struct" => Some(Box::new(|_, args, info| {
+            use crate::ast::Prim;
+            let mut vals: Vec<(String, Prim)> = vec![];
+            for (name, val) in args.iter() {
+                vals.push((name.to_string(), val()?));
+            }
+            Ok(Struct(vals, info))
+        })),
         "++" => Some(Box::new(|_, args, info| {
             prim_add_strs(&args.get("left").unwrap()()?, &args.get("right").unwrap()()?, info)
         })),
@@ -161,10 +169,9 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             name: "argv".to_string(),
             semantic: Func,
             ty: Function {
-                results: dict!("it" => string_type()),
+                results: Box::new(Record(dict!("it" => string_type()))),
                 intros: dict!(),
-                arguments: dict!("it" => i32_type()),
-                effects: vec![],
+                arguments: Box::new(Record(dict!("it" => i32_type()))),
             },
             cpp: LangImpl::new("([&argv](const int x){return argv[x];})"),
         },
@@ -172,10 +179,9 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             name: "eprint".to_string(),
             semantic: Func,
             ty: Function {
-                results: dict! {},
-                arguments: dict! {"it" => string_type()},
+                results: Box::new(WithEffect(Box::new(unit_type()), vec!["stderr".to_string()])),
+                arguments: Box::new(Record(dict! {"it" => string_type()})),
                 intros: dict!(),
-                effects: vec!["stderr".to_string()],
             },
             cpp: LangImpl::new("std::cerr << ").with_includes("#include <iostream>"),
         },
@@ -183,10 +189,9 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             name: "exit".to_string(),
             semantic: Func,
             ty: Function {
-                results: dict! {"it" => void_type()},
-                arguments: dict! {"it" => i32_type()},
+                results: Box::new(Record(dict! {"it" => void_type()})),
+                arguments: Box::new(Record(dict! {"it" => i32_type()})),
                 intros: dict!(),
-                effects: vec!["stderr".to_string()],
             },
             cpp: LangImpl::new("[](const int code){exit(code);}")
                 .with_includes("#include <stdlib.h>"),
@@ -195,10 +200,9 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             name: "print".to_string(),
             semantic: Func,
             ty: Function {
-                results: dict! {},
-                arguments: dict! {"it" => string_type()},
+                results: Box::new(WithEffect(Box::new(unit_type()), vec!["stdout".to_string()])),
+                arguments: Box::new(Record(dict! {"it" => string_type()})),
                 intros: dict!(),
-                effects: vec!["stdout".to_string()],
             },
             cpp: LangImpl::new("std::cout << ").with_includes("#include <iostream>"),
         },
@@ -206,21 +210,30 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             name: "pointer".to_string(),
             semantic: Func,
             ty: Function {
-                results: dict! {"it" => variable("a")},
-                arguments: dict! {"it" => variable("Type")},
+                results: Box::new(Record(dict! {"it" => variable("a")})),
+                arguments: Box::new(Record(dict! {"it" => variable("Type")})),
                 intros: dict!("a" => variable("Type")),
-                effects: vec![],
             },
             cpp: LangImpl::new("std::cout << ").with_includes("#include <iostream>"),
+        },
+        Extern {
+            name: "struct".to_string(),
+            semantic: Func,
+            ty: Function {
+                results: Box::new(Record(dict! {"it" => void_type()})),
+                arguments: Box::new(Record(dict! {"it" => i32_type()})),
+                intros: dict!(),
+            },
+            cpp: LangImpl::new("[](const int code){exit(code);}")
+                .with_includes("#include <stdlib.h>"),
         },
         Extern {
             name: ";".to_string(),
             semantic: operator(20, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
-                results: dict!("it" => variable("b")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("b")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator(";"),
         },
@@ -229,9 +242,8 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(30, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type"), "c" => variable("Type")),
-                results: dict!("it" => variable("c")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("c")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator(", "),
         },
@@ -240,9 +252,8 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(40, Right),
             ty: Function {
                 intros: dict!("a" => variable("Identifier"), "b" => variable("Type")),
-                results: dict!("it" => variable("b")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("b")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator(" = "),
         },
@@ -251,9 +262,8 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(42, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("left" => variable("a"), "right" => variable("Type")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("Type")))),
             },
             cpp: LangImpl::operator(":"),
         },
@@ -262,13 +272,12 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(45, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
-                results: dict!("it" => Union(set!(
+                results: Box::new(Record(dict!("it" => Union(set!(
                             variable("a"),
                             variable("b")
                     ))
-                ),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                ))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("?"),
         },
@@ -277,9 +286,8 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(47, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("left" => variable("Type"), "right" => variable("a")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("left" => variable("Type"), "right" => variable("a")))),
             },
             cpp: LangImpl::operator("-|"),
         },
@@ -288,9 +296,8 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(48, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
-                results: dict!("it" => Union(set!(variable("a"), variable("b")))),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => Union(set!(variable("a"), variable("b")))))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("|"),
         },
@@ -299,9 +306,8 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(48, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
-                results: dict!("it" => Product(set!(variable("a"), variable("b")))),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => Product(set!(variable("a"), variable("b")))))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("&"),
         },
@@ -310,9 +316,8 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             semantic: operator(49, Left),
             ty: Function {
                 intros: dict!("a" => variable("Display"), "b" => variable("Display")),
-                results: dict!("it" => string_type()),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => string_type()))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("+")
                 .with_arg_processor("std::to_string")
@@ -337,9 +342,8 @@ string to_string(const bool& t){
             semantic: operator(50, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("<"),
         },
@@ -348,9 +352,8 @@ string to_string(const bool& t){
             semantic: operator(50, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("<="),
         },
@@ -359,9 +362,8 @@ string to_string(const bool& t){
             semantic: operator(50, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator(">"),
         },
@@ -370,9 +372,8 @@ string to_string(const bool& t){
             semantic: operator(50, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator(">="),
         },
@@ -381,9 +382,8 @@ string to_string(const bool& t){
             semantic: operator(50, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("!="),
         },
@@ -392,9 +392,8 @@ string to_string(const bool& t){
             semantic: operator(50, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("=="),
         },
@@ -403,9 +402,8 @@ string to_string(const bool& t){
             semantic: operator(60, Left),
             ty: Function {
                 intros: dict!(),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => bit_type(), "right" => bit_type()),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => bit_type(), "right" => bit_type()))),
             },
             cpp: LangImpl::operator("||"),
         },
@@ -414,9 +412,8 @@ string to_string(const bool& t){
             semantic: operator(60, Left),
             ty: Function {
                 intros: dict!(),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("left" => bit_type(), "right" => bit_type()),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("left" => bit_type(), "right" => bit_type()))),
             },
             cpp: LangImpl::operator("&&"),
         },
@@ -425,9 +422,8 @@ string to_string(const bool& t){
             semantic: operator(70, Left),
             ty: Function {
                 intros: dict!(),
-                results: dict!("it" => bit_type()),
-                arguments: dict!("it" => bit_type()),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => bit_type()))),
+                arguments: Box::new(Record(dict!("it" => bit_type()))),
             },
             cpp: LangImpl::operator("!"),
         },
@@ -436,9 +432,8 @@ string to_string(const bool& t){
             semantic: operator(70, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type")), // TODO: This should unpack a type with a set of named values and put them into scope.
-                results: dict!("it" => variable("a")),
-                arguments: dict!("it" => variable("a")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("it" => variable("a")))),
             },
             cpp: LangImpl::operator("..."), // TODO: Implement
         },
@@ -447,9 +442,8 @@ string to_string(const bool& t){
             semantic: operator(70, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("it" => variable("a")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("it" => variable("a")))),
             },
             cpp: LangImpl::operator("-"),
         },
@@ -458,9 +452,8 @@ string to_string(const bool& t){
             semantic: operator(70, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("+"),
         },
@@ -469,9 +462,8 @@ string to_string(const bool& t){
             semantic: operator(80, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("*"),
         },
@@ -480,9 +472,8 @@ string to_string(const bool& t){
             semantic: operator(80, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("%"),
         },
@@ -491,9 +482,8 @@ string to_string(const bool& t){
             semantic: operator(80, Left),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator("/"),
         },
@@ -502,9 +492,8 @@ string to_string(const bool& t){
             semantic: operator(90, Right),
             ty: Function {
                 intros: dict!("a" => variable("Number"), "b" => variable("Number")),
-                results: dict!("it" => variable("a")),
-                arguments: dict!("left" => variable("a"), "right" => variable("b")),
-                effects: vec![],
+                results: Box::new(Record(dict!("it" => variable("a")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::new("pow")
                 .with_includes("#include <cmath>")
