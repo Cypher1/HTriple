@@ -241,11 +241,25 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             name: ",".to_string(),
             semantic: operator(30, Left),
             ty: Function {
-                intros: dict!("a" => variable("Type"), "b" => variable("Type"), "c" => variable("Type")),
-                results: Box::new(Record(dict!("it" => variable("c")))),
+                intros: dict!("a" => variable("Type"), "b" => variable("Type")),
+                results: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
                 arguments: Box::new(Record(dict!("left" => variable("a"), "right" => variable("b")))),
             },
             cpp: LangImpl::operator(", "),
+        },
+        Extern {
+            name: ".".to_string(),
+            semantic: operator(30, Left),
+            ty: Function {
+                intros: dict!("a" => variable("Type"), "b" => variable("Type")),
+                results: Box::new(Record(dict!("it" => variable("b")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => Function {
+                    intros: dict!(),
+                    results: Box::new(Record(dict!("it" => variable("b")))),
+                    arguments: Box::new(Record(dict!("it" => variable("a"))))
+                }))),
+            },
+            cpp: LangImpl::operator("."),
         },
         Extern {
             name: "=".to_string(),
