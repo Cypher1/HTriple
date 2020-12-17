@@ -220,9 +220,9 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
             name: "struct".to_string(),
             semantic: Func,
             ty: Function {
-                results: Box::new(Record(dict! {"it" => void_type()})),
-                arguments: Box::new(Record(dict! {"it" => i32_type()})),
-                intros: dict!(),
+                results: Box::new(variable("a")),
+                arguments: Box::new(variable("a")),
+                intros: dict!("a" => variable("Type")),
             },
             cpp: LangImpl::new("[](const int code){exit(code);}")
                 .with_includes("#include <stdlib.h>"),
@@ -249,6 +249,20 @@ pub fn get_externs(_db: &dyn Compiler) -> Result<HashMap<String, Extern>, TError
         },
         Extern {
             name: ".".to_string(),
+            semantic: operator(30, Left),
+            ty: Function {
+                intros: dict!("a" => variable("Type"), "b" => variable("Type")),
+                results: Box::new(Record(dict!("it" => variable("b")))),
+                arguments: Box::new(Record(dict!("left" => variable("a"), "right" => Function {
+                    intros: dict!(),
+                    results: Box::new(Record(dict!("it" => variable("b")))),
+                    arguments: Box::new(Record(dict!("it" => variable("a"))))
+                }))),
+            },
+            cpp: LangImpl::operator("."),
+        },
+        Extern {
+            name: "|>".to_string(),
             semantic: operator(30, Left),
             ty: Function {
                 intros: dict!("a" => variable("Type"), "b" => variable("Type")),
