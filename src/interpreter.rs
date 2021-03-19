@@ -752,6 +752,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_and_eval_struct_x4_y5_dot_x() {
+        assert_eq!(
+            eval_str("struct(x=4, y=5).x".to_string()),
+            Ok(I32(4))
+        );
+    }
+
+    #[test]
+    fn parse_and_eval_struct_x4_y5_dot_y() {
+        assert_eq!(
+            eval_str("struct(x=4, y=\"Hi\").y".to_string()),
+            Ok(Str("Hi".to_string()))
+        );
+    }
+
+    #[test]
     fn parse_and_eval_struct_x4_y5() {
         assert_eq!(
             eval_str("\"\"++struct(x=4, y=\"Hi\")".to_string()),
