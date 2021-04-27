@@ -25,10 +25,12 @@ mod tokens;
 mod tree;
 
 mod definition_finder;
-mod experimental;
 mod pretty_print;
 mod symbol_table_builder;
 mod to_cpp;
+
+#[cfg(test)]
+mod experimental;
 
 use ast::Visitor;
 use interpreter::Interpreter;
