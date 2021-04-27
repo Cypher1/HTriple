@@ -84,7 +84,7 @@ impl Term {
     }
 }
 
-mod util {
+pub mod util {
     use super::*;
 
     pub fn church_bool(b: bool) -> Term {
