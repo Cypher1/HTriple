@@ -30,6 +30,7 @@ mod pretty_print;
 mod symbol_table_builder;
 mod to_cpp;
 
+#[cfg(test)]
 #[allow(dead_code)]
 mod experimental; // This is where the fun, but currently unused stuff goes
 
