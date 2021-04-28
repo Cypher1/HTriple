@@ -157,6 +157,38 @@ mod tests {
     }
 
     #[test]
+    fn skk_is_i() {
+        test(
+            vec![
+                T(S),
+                T(K),
+                T(K),
+                v("x"),
+                v("y"),
+                v("z"),
+            ]
+            .into(),
+            vec![v("x"), v("y"), v("z")].into(),
+        );
+    }
+
+    #[test]
+    fn sks_is_i() {
+        test(
+            vec![
+                T(S),
+                T(K),
+                T(S),
+                v("x"),
+                v("y"),
+                v("z"),
+            ]
+            .into(),
+            vec![v("x"), v("y"), v("z")].into(),
+        );
+    }
+
+    #[test]
     fn complex_expression() {
         /*
         S(K(SI))Kαβ →
