@@ -6,25 +6,19 @@ pub enum SKI {
     S,
     K,
     I,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-pub enum SVal {
-    T(SKI),
     V(String),
     P(Stack),
 }
 
-type Stack = VecDeque<SVal>;
+type Stack = VecDeque<SKI>;
 
-use SVal::*;
 use SKI::*;
 
 pub fn eval(mut stack: Stack) -> Stack {
     // eprintln!("{:?}", shows(&stack));
     while let Some(curr) = stack.pop_front() {
         match curr {
-            T(S) => {
+            S => {
                 if stack.len() >= 3 {
                     let x = stack
                         .pop_front()
@@ -47,11 +41,11 @@ pub fn eval(mut stack: Stack) -> Stack {
                     stack.push_front(z);
                     stack.push_front(x);
                 } else {
-                    stack.push_front(T(S));
+                    stack.push_front(S);
                     return stack;
                 }
             }
-            T(K) => {
+            K => {
                 if stack.len() >= 2 {
                     let val = stack
                         .pop_front()
@@ -59,11 +53,11 @@ pub fn eval(mut stack: Stack) -> Stack {
                     stack.pop_front(); // drop
                     stack.push_front(val); // TODO: Replace rather than pop_front+push_front
                 } else {
-                    stack.push_front(T(K));
+                    stack.push_front(K);
                     return stack;
                 }
             }
-            T(I) => {} // Identity
+            I => {} // Identity
             V(name) => {
                 let mut simplified = VecDeque::new();
                 for val in stack.iter().cloned() {
@@ -94,11 +88,11 @@ pub fn eval(mut stack: Stack) -> Stack {
     panic!("no instructions")
 }
 
-pub fn show(s: &SVal) -> String {
+pub fn show(s: &SKI) -> String {
     match s {
-        T(S) => "S".to_string(),
-        T(K) => "K".to_string(),
-        T(I) => "I".to_string(),
+        S => "S".to_string(),
+        K => "K".to_string(),
+        I => "I".to_string(),
         V(name) => name.to_string(),
         P(st) => {
             let mut s = "(".to_string();
@@ -120,8 +114,8 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    fn v(name: &str) -> SVal {
-        SVal::V(name.to_string())
+    fn v(name: &str) -> SKI {
+        SKI::V(name.to_string())
     }
 
     fn test(stack: Stack, expected: Stack) {
@@ -135,7 +129,7 @@ mod tests {
     #[test]
     fn term_i() {
         test(
-            vec![T(I), v("x"), v("y"), v("z")].into(),
+            vec![I, v("x"), v("y"), v("z")].into(),
             vec![v("x"), v("y"), v("z")].into(),
         );
     }
@@ -143,7 +137,7 @@ mod tests {
     #[test]
     fn term_k() {
         test(
-            vec![T(K), v("x"), v("y"), v("z")].into(),
+            vec![K, v("x"), v("y"), v("z")].into(),
             vec![v("x"), v("z")].into(),
         );
     }
@@ -151,7 +145,7 @@ mod tests {
     #[test]
     fn term_s() {
         test(
-            vec![T(S), v("x"), v("y"), v("z")].into(),
+            vec![S, v("x"), v("y"), v("z")].into(),
             vec![v("x"), v("z"), P(vec![v("y"), v("z")].into())].into(),
         );
     }
@@ -160,9 +154,9 @@ mod tests {
     fn skk_is_i() {
         test(
             vec![
-                T(S),
-                T(K),
-                T(K),
+                S,
+                K,
+                K,
                 v("x"),
                 v("y"),
                 v("z"),
@@ -176,9 +170,9 @@ mod tests {
     fn sks_is_i() {
         test(
             vec![
-                T(S),
-                T(K),
-                T(S),
+                S,
+                K,
+                S,
                 v("x"),
                 v("y"),
                 v("z"),
@@ -200,9 +194,9 @@ mod tests {
          */
         test(
             vec![
-                T(S),
-                P(vec![T(K), P(vec![T(S), T(I)].into())].into()),
-                T(K),
+                S,
+                P(vec![K, P(vec![S, I].into())].into()),
+                K,
                 v("a"),
                 v("b"),
             ]

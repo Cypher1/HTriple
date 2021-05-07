@@ -1,13 +1,10 @@
-use ski::SVal;
-
 use crate::experimental::lambda;
 use crate::experimental::ski;
 
-use ski::SVal::*;
 use ski::SKI::*;
 
 impl lambda::Term {
-    pub fn to_ski(&self) -> ski::SVal {
+    pub fn to_ski(&self) -> ski::SKI {
         todo!();
     }
 }
@@ -22,18 +19,26 @@ mod test {
     fn church_0_to_ski() {
         assert_eq!(
             church_nat(0).to_ski(),
-            P(vec![T(K),T(I)].into())
+            P(vec![K,I].into())
         );
     }
 
     #[test]
     fn church_1_to_ski() {
-        todo!();
+        assert_eq!(
+            church_nat(1).to_ski(),
+            P(vec![I].into())
+        );
     }
 
     #[test]
     fn church_2_to_ski() {
-        todo!();
+        assert_eq!(
+            church_nat(2).to_ski(),
+            P(vec![
+                // S(S(K S)K)I
+                I].into())
+        );
     }
 
     #[test]
