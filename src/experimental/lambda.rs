@@ -1,5 +1,5 @@
 type Delta = i32;
-type Ind = Delta; // Should be unsigned
+pub type Ind = Delta; // Should be unsigned
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Debug)]
 pub enum Term {
@@ -27,6 +27,14 @@ pub fn abs(inner: Term) -> Term {
 }
 
 impl Term {
+    pub fn uses(&self, var: Ind) -> bool {
+        match self {
+            Var { ind } => *ind == var,
+            App { inner, arg } => inner.uses(var) || arg.uses(var),
+            Abs { inner } => inner.uses(var+1),
+        }
+    }
+
     pub fn shift(&self, delta: Delta) -> Term {
         self.shift_with_cutoff(delta, 0)
     }
@@ -104,6 +112,13 @@ pub mod util {
             curr = app(f(), curr);
         }
         abs(abs(curr))
+    }
+
+    pub fn church_succ() -> Term {
+        let n = || var(2);
+        let f = || var(1);
+        let x = || var(0);
+        abs(abs(abs(app(app(n(), f()), app(f(), x())))))
     }
 
     #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Debug)]
@@ -280,6 +295,42 @@ mod test {
             app(church_not(), church_bool(false)).eval(),
             church_bool(true)
         );
+    }
+
+    #[test]
+    fn eval_church_succ_3() {
+        let three = church_nat(3);
+        let four = church_nat(4);
+        assert_eq!(app(church_succ(), three).eval(), four);
+    }
+
+    #[test]
+    fn eval_church_succ_7() {
+        let seven = church_nat(7);
+        let eight = church_nat(8);
+        assert_eq!(app(church_succ(), seven).eval(), eight);
+    }
+
+    #[test]
+    fn eval_church_succ_70() {
+        let seventy = church_nat(70);
+        let seventy_one = church_nat(71);
+        assert_eq!(app(church_succ(), seventy).eval(), seventy_one);
+    }
+
+    #[test]
+    fn eval_church_succ_700() {
+        let seven_hundred = church_nat(700);
+        let seven_hundred_and_one = church_nat(701);
+        assert_eq!(app(church_succ(), seven_hundred).eval(), seven_hundred_and_one);
+    }
+
+    #[test]
+    #[ignore]
+    fn eval_church_succ_7000() {
+        let seven_thousand = church_nat(7000);
+        let seven_thousand_and_one = church_nat(7001);
+        assert_eq!(app(church_succ(), seven_thousand).eval(), seven_thousand_and_one);
     }
 
     #[test]

@@ -15,6 +15,13 @@ pub enum Ski {
     P(Stack),
 }
 
+use std::fmt;
+impl fmt::Display for Ski {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", show(self))
+    }
+}
+
 pub fn p(stack: &[Ski]) -> Ski {
     P(stack.to_vec().into())
 }
