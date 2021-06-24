@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 
+pub mod arena_graph;
 pub mod ast;
 pub mod cli_options;
 pub mod database;
