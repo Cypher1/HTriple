@@ -8,12 +8,13 @@ use std::process::Command;
 
 use directories::ProjectDirs;
 
-use super::ast::{path_to_string, Node, Path, PathRef, Root, Symbol, Table, Visitor};
-use super::cli_options::Options;
-use super::errors::TError;
-use super::externs::{Extern, Semantic};
-use super::primitives::Val;
-use super::tokens::Token;
+use crate::ast::{path_to_string, Node, Path, PathRef, Root, Symbol, Visitor};
+use crate::cli_options::Options;
+use crate::errors::TError;
+use crate::externs::{Extern, Semantic};
+use crate::primitives::Val;
+use crate::symbol_table::Table;
+use crate::tokens::Token;
 
 #[salsa::query_group(CompilerStorage)]
 pub trait Compiler {

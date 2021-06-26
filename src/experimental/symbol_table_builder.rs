@@ -1,12 +1,22 @@
-use super::ast::*;
-use super::database::Compiler;
-use super::errors::TError;
+use crate::ast::*;
+use crate::database::Compiler;
+use crate::errors::TError;
 use crate::primitives::Val;
+use crate::symbol_table_builder::State;
 use crate::symbol_table::*;
+use super::tree::{to_hash_root, HashTree};
+use specs::prelude::*;
 
 // Walks the AST interpreting it.
-#[derive(Default)]
-pub struct SymbolTableBuilder {}
+pub struct SymbolTableBuilder<'a> {
+    world: &'a mut World,
+}
+
+impl<'a> SymbolTableBuilder<'a> {
+    pub fn new(world: &'a mut World) -> Self {
+        Self { world }
+    }
+}
 
 // TODO: Return nodes.
 type Res = Result<Node, TError>;

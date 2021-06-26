@@ -29,6 +29,8 @@ rustyline = "6.3.0"
 directories = "3.0"
 termcolor = "1.1"
 bitvec = "0.20"
+component_group = "3.0.0"
+specs = { version = "0.16.0", features = ["specs-derive", "shred-derive"] }
 criterion = { version = "0.3", optional = true }
 
 [dev-dependencies]

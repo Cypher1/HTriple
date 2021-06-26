@@ -17,11 +17,10 @@ pub mod tribool;
 pub mod interpreter;
 pub mod parser;
 pub mod type_checker;
-pub mod type_graph;
-pub mod type_graph_builder;
 
 mod externs;
 mod location;
+mod symbol_table;
 mod tokens;
 mod tree;
 
@@ -33,6 +32,7 @@ mod to_cpp;
 #[allow(dead_code)]
 mod experimental; // This is where the fun, but currently unused stuff goes
 
+mod components;
 use ast::Visitor;
 use interpreter::Interpreter;
 use pretty_print::PrettyPrint;
