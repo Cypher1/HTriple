@@ -135,14 +135,16 @@ impl<T: Debug + Display>  ArenaGraph<T> {
         self.values.len()
     }
 
-    fn get_node(self: &Self, id: ID) -> NodeRef<T> {
-        // TODO: Check the node exists
-        NodeRef::new(self, id)
+    fn get_node(self: &Self, id: ID) -> Result<NodeRef<T>, GraphError> {
+        let r = NodeRef::new(self, id);
+        r.deref()?;
+        Ok(r)
     }
 
-    fn get_node_mut(self: &mut Self, id: ID) -> NodeMutRef<T> {
-        NodeMutRef::new(self, id)
-        // TODO: Check the node exists
+    fn get_node_mut(self: &mut Self, id: ID) -> Result<NodeMutRef<T>, GraphError> {
+        let mut r = NodeMutRef::new(self, id);
+        r.deref()?;
+        Ok(r)
     }
 
     pub fn visit_all<R>(self: &mut Self, f: &mut dyn FnMut(&mut T, &mut Vec<ID>)->R) -> Result<Vec<R>, GraphError> {
@@ -161,7 +163,7 @@ mod test {
         let mut g: ArenaGraph<i32> = ArenaGraph::default();
 
         let a = g.alloc(3);
-        assert_eq!(g.get_node(a).get_value(), Ok(&3), "Graph node info should be accessible");
+        assert_eq!(g.get_node(a)?.get_value(), Ok(&3), "Graph node info should be accessible");
         Ok(())
     }
 
@@ -173,7 +175,7 @@ mod test {
 
         g.add_edge(a, a)?;
 
-        assert_eq!(g.get_node(a).children(), Ok(&vec![a]), "Children of a should be [a]");
+        assert_eq!(g.get_node(a)?.children(), Ok(&vec![a]), "Children of a should be [a]");
         Ok(())
     }
 
@@ -187,8 +189,8 @@ mod test {
         g.add_edge(a, b)?;
         g.add_edge(b, a)?;
 
-        assert_eq!(g.get_node(a).children()?, &vec![b], "Children of a should be [b]");
-        assert_eq!(g.get_node(b).children()?, &vec![a], "Children of b should be [a]");
+        assert_eq!(g.get_node(a)?.children()?, &vec![b], "Children of a should be [b]");
+        assert_eq!(g.get_node(b)?.children()?, &vec![a], "Children of b should be [a]");
         Ok(())
     }
 
@@ -202,7 +204,7 @@ mod test {
         g.add_edge(a, b)?;
         g.add_edge(b, a)?;
 
-        assert_eq!(g.get_node(a).visit(&mut |val, children| (val.clone(), children.clone()))?, (3, vec![b]));
+        assert_eq!(g.get_node(a)?.visit(&mut |val, children| (val.clone(), children.clone()))?, (3, vec![b]));
         Ok(())
     }
 
@@ -217,10 +219,10 @@ mod test {
         g.add_edge(a, b)?;
         g.add_edge(b, a)?;
 
-        assert_eq!(g.get_node_mut(a).visit(&mut |val, _children| {*val *= 2; ()})?, ());
+        assert_eq!(g.get_node_mut(a)?.visit(&mut |val, _children| {*val *= 2; ()})?, ());
 
-        assert_eq!(g.get_node(a).visit(&mut |val, children| (val.clone(), children.clone()))?, (6, vec![b]));
-        assert_eq!(g.get_node(b).visit(&mut |val, children| (val.clone(), children.clone()))?, (4, vec![a]));
+        assert_eq!(g.get_node(a)?.visit(&mut |val, children| (val.clone(), children.clone()))?, (6, vec![b]));
+        assert_eq!(g.get_node(b)?.visit(&mut |val, children| (val.clone(), children.clone()))?, (4, vec![a]));
         Ok(())
     }
 
@@ -237,8 +239,8 @@ mod test {
 
         assert_eq!(g.visit_all(&mut |val, _children| {*val *= 2; ()})?, vec![(), ()]);
 
-        assert_eq!(g.get_node(a).visit(&mut |val, children| (val.clone(), children.clone()))?, (6, vec![b]));
-        assert_eq!(g.get_node(b).visit(&mut |val, children| (val.clone(), children.clone()))?, (8, vec![a]));
+        assert_eq!(g.get_node(a)?.visit(&mut |val, children| (val.clone(), children.clone()))?, (6, vec![b]));
+        assert_eq!(g.get_node(b)?.visit(&mut |val, children| (val.clone(), children.clone()))?, (8, vec![a]));
         Ok(())
     }
 
@@ -255,7 +257,7 @@ mod test {
         let mut curr = a;
         for _ in 0..1000 {
             println!("At node: {}", &curr);
-            curr = *g.get_node(curr).children()?.first().expect("Shouldn't run out of nodes");
+            curr = *g.get_node(curr)?.children()?.first().expect("Shouldn't run out of nodes");
         }
         Ok(())
     }
