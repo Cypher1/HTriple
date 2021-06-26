@@ -11,7 +11,7 @@ pub enum GraphError {
 }
 use GraphError::*;
 
-#[derive(Clone)]
+#[derive(Clone, Hash, Ord, Eq, PartialEq, PartialOrd)]
 struct GraphNode<T> {
     value: T,
     children: Vec<ID>,
