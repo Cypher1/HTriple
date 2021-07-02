@@ -34,6 +34,7 @@ criterion = { version = "0.3", optional = true }
 [dev-dependencies]
 pretty_assertions = "0.6.1"
 rand = "0.7.3"
+anchors = { version = "0.6.0", path = "../anchors" }
 
 [profile.test]
 opt-level = 3
